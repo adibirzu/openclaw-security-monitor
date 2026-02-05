@@ -1,8 +1,9 @@
 ---
 name: security-monitor
-description: Proactive security monitoring, threat scanning, and alerting for OpenClaw deployments
+description: Proactive security monitoring, threat scanning, and auto-remediation for OpenClaw deployments
 user-invocable: true
 ---
+<!-- {"requires":{"bins":["bash","curl"]}} -->
 
 # Security Monitor
 
@@ -65,6 +66,34 @@ Monitor network connections and check against IOC database.
 bash ~/.openclaw/workspace/skills/security-monitor/scripts/network-check.sh
 ```
 
+### /security-remediate
+Scan-driven remediation: runs `scan.sh`, skips CLEAN checks, and executes per-check remediation scripts for each WARNING/CRITICAL finding. Includes 32 individual scripts covering file permissions, exfiltration domain blocking, tool deny lists, gateway hardening, sandbox configuration, credential auditing, and more.
+
+```bash
+# Full scan + remediate (interactive)
+bash ~/.openclaw/workspace/skills/security-monitor/scripts/remediate.sh
+
+# Auto-approve all fixes
+bash ~/.openclaw/workspace/skills/security-monitor/scripts/remediate.sh --yes
+
+# Dry run (preview)
+bash ~/.openclaw/workspace/skills/security-monitor/scripts/remediate.sh --dry-run
+
+# Remediate a single check
+bash ~/.openclaw/workspace/skills/security-monitor/scripts/remediate.sh --check 7 --dry-run
+
+# Run all 32 remediation scripts (skip scan)
+bash ~/.openclaw/workspace/skills/security-monitor/scripts/remediate.sh --all
+```
+
+Flags:
+- `--yes` / `-y` — Skip confirmation prompts (auto-approve all fixes)
+- `--dry-run` — Show what would be fixed without making changes
+- `--check N` — Run remediation for check N only (skip scan)
+- `--all` — Run all 32 remediation scripts without scanning first
+
+Exit codes: 0=fixes applied, 1=some fixes failed, 2=nothing to fix
+
 ### /security-setup-telegram
 Register a Telegram chat for daily security alerts.
 
@@ -121,3 +150,14 @@ Based on research from 40+ security sources including:
 - [ToxSec: OpenClaw Security Checklist](https://www.toxsec.com/p/openclaw-security-checklist)
 - [Aikido.dev: Fake ClawdBot VS Code Extension](https://www.aikido.dev/blog/fake-clawdbot-vscode-extension-malware)
 - [Prompt Security: Top 10 MCP Risks](https://prompt.security/blog/top-10-mcp-security-risks)
+
+## Installation
+
+```bash
+# From GitHub
+git clone https://github.com/adibirzu/openclaw-security-monitor.git \
+  ~/.openclaw/workspace/skills/security-monitor
+chmod +x ~/.openclaw/workspace/skills/security-monitor/scripts/*.sh
+```
+
+The OpenClaw agent auto-discovers skills from `~/.openclaw/workspace/skills/` via SKILL.md frontmatter. After cloning, the `/security-scan`, `/security-remediate`, `/security-dashboard`, `/security-network`, and `/security-setup-telegram` commands will be available in the agent.

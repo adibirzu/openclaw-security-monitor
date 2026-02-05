@@ -5,3 +5,25 @@ node_modules/
 .DS_Store
 *.swp
 *.swo
+*~
+
+# Environment and secrets
+.env
+.env.*
+*.key
+*.pem
+.secrets*
+.git-credentials
+.netrc
+
+# OS
+Thumbs.db
+.AppleDouble
+
+# Editor
+.idea/
+.vscode/settings.json
+
+# Temp
+*.tmp
+*.temp

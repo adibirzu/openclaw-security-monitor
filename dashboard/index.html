@@ -122,6 +122,57 @@
   /* Timer */
   .refresh-timer { font-size: 11px; color: #484f58; }
 
+  /* Remediate buttons */
+  .btn-remediate {
+    padding: 4px 10px; border: 1px solid #d29922; border-radius: 4px;
+    background: transparent; color: #d29922; cursor: pointer; font-size: 11px;
+    transition: background 0.15s, color 0.15s; margin-top: 4px; align-self: flex-start;
+  }
+  .btn-remediate:hover { background: #d29922; color: #000; }
+  .btn-remediate:disabled { opacity: 0.5; cursor: not-allowed; }
+  .btn-remediate-all {
+    padding: 6px 16px; border: 1px solid #d29922; border-radius: 6px;
+    background: #d29922; color: #000; cursor: pointer; font-size: 13px; font-weight: 600;
+    transition: background 0.15s;
+  }
+  .btn-remediate-all:hover { background: #e0a82e; }
+  .btn-remediate-all:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  /* Modal */
+  .modal-overlay {
+    display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    background: rgba(0,0,0,0.7); z-index: 100; align-items: center; justify-content: center;
+  }
+  .modal-overlay.active { display: flex; }
+  .modal {
+    background: #161b22; border: 1px solid #30363d; border-radius: 10px;
+    width: 90%; max-width: 700px; max-height: 80vh; display: flex; flex-direction: column;
+  }
+  .modal-header {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 16px 20px; border-bottom: 1px solid #30363d;
+  }
+  .modal-header h2 { font-size: 16px; color: #f0f6fc; }
+  .modal-close {
+    background: none; border: none; color: #8b949e; font-size: 20px; cursor: pointer;
+    padding: 0; line-height: 1;
+  }
+  .modal-close:hover { color: #f0f6fc; }
+  .modal-body {
+    padding: 16px 20px; overflow-y: auto; flex: 1;
+  }
+  .modal-body pre {
+    background: #0d1117; border: 1px solid #30363d; border-radius: 6px;
+    padding: 12px; font-size: 12px; white-space: pre-wrap; word-break: break-all;
+    color: #c9d1d9; max-height: none;
+  }
+  .remediate-result {
+    padding: 8px 12px; border-radius: 6px; margin-bottom: 8px; font-size: 13px;
+  }
+  .remediate-result.result-fixed { background: #0d2818; border: 1px solid #238636; color: #3fb950; }
+  .remediate-result.result-failed { background: #2d1215; border: 1px solid #da3633; color: #f85149; }
+  .remediate-result.result-skipped { background: #1a1e24; border: 1px solid #30363d; color: #8b949e; }
+
   /* Responsive */
   @media (max-width: 900px) {
     .grid-top { grid-template-columns: 1fr; }
@@ -142,6 +193,7 @@
     <span class="badge badge-unknown" id="statusBadge">LOADING</span>
     <button class="btn" id="btnRefresh" onclick="refreshAll()">Refresh</button>
     <button class="btn btn-primary" id="btnScan" onclick="runScan()">Run Scan</button>
+    <button class="btn-remediate-all" id="btnRemediateAll" onclick="remediateAll()">Remediate All</button>
   </div>
 </div>
 
@@ -162,7 +214,7 @@
     </div>
   </div>
 
-  <!-- 8 security checks -->
+  <!-- Security checks -->
   <div class="card card-full" style="margin-bottom:16px">
     <h3>Security Checks</h3>
     <div class="grid-checks" id="checksGrid">
@@ -210,6 +262,17 @@
   <div class="card card-full">
     <h3>Scan History (last 30)</h3>
     <div id="scanHistory"><div class="loading-overlay"><div class="spinner"></div> Loading...</div></div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="remediateModal" onclick="if(event.target===this)closeModal()">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 id="modalTitle">Remediation Output</h2>
+      <button class="modal-close" onclick="closeModal()">&times;</button>
+    </div>
+    <div class="modal-body" id="modalBody">
+    </div>
   </div>
 </div>
 
@@ -302,10 +365,11 @@ function renderChecks(data) {
   }
   el.innerHTML = data.parsed.checks.map(c => `
     <div class="check-card">
-      <div class="check-num">${c.num}/8</div>
+      <div class="check-num">${c.num}/${c.total}</div>
       <div class="check-name">${esc(c.name)}</div>
       <div class="check-status ${statusClass(c.status)}">${esc(c.status)}</div>
       <div class="check-detail">${esc(c.details)}</div>
+      ${c.status !== 'CLEAN' ? `<button class="btn-remediate" id="btnRem${c.num}" onclick="remediateCheck(${c.num})">Remediate</button>` : ''}
     </div>
   `).join('');
 }
@@ -480,7 +544,7 @@ function renderScanHistory(data) {
     return;
   }
   const entries = data.entries.slice(-30);
-  const maxChecks = 8;
+  const maxChecks = 32;
   let html = '<div class="history-container">';
   entries.forEach(e => {
     const total = e.clean + e.warnings + e.critical;
@@ -570,6 +634,62 @@ async function runScan() {
   btn.disabled = false;
   btn.textContent = 'Run Scan';
   countdown = REFRESH_INTERVAL;
+}
+
+// Modal
+function openModal(title, bodyHtml) {
+  document.getElementById('modalTitle').textContent = title;
+  document.getElementById('modalBody').innerHTML = bodyHtml;
+  document.getElementById('remediateModal').classList.add('active');
+}
+function closeModal() {
+  document.getElementById('remediateModal').classList.remove('active');
+}
+
+// Remediate single check
+async function remediateCheck(num) {
+  const btn = document.getElementById('btnRem' + num);
+  if (btn) { btn.disabled = true; btn.textContent = 'Running...'; }
+  openModal(`Remediation - Check ${num}`, '<div class="loading-overlay"><div class="spinner"></div> Running remediation...</div>');
+  const data = await apiFetch(`/api/remediate/check/${num}`, { method: 'POST' });
+  let html = '';
+  if (data.error && !data.output) {
+    html = `<div class="remediate-result result-failed">${esc(data.error)}</div>`;
+  } else {
+    const cls = data.status === 'fixed' ? 'result-fixed' : data.status === 'nothing_to_fix' ? 'result-skipped' : 'result-failed';
+    const label = data.status === 'fixed' ? 'Fixed' : data.status === 'nothing_to_fix' ? 'Nothing to fix' : 'Failed';
+    html = `<div class="remediate-result ${cls}">Check ${num}: ${label}</div>`;
+    if (data.output) html += `<pre>${esc(data.output)}</pre>`;
+    if (data.stderr) html += `<pre style="color:#f85149">${esc(data.stderr)}</pre>`;
+  }
+  document.getElementById('modalBody').innerHTML = html;
+  if (btn) { btn.disabled = false; btn.textContent = 'Remediate'; }
+  refreshAll();
+}
+
+// Remediate all non-clean checks
+async function remediateAll() {
+  const btn = document.getElementById('btnRemediateAll');
+  btn.disabled = true;
+  btn.textContent = 'Remediating...';
+  openModal('Remediate All', '<div class="loading-overlay"><div class="spinner"></div> Running remediation on all non-clean checks...</div>');
+  const data = await apiFetch('/api/remediate/all', { method: 'POST' });
+  let html = '';
+  if (data.error && !data.results) {
+    html = `<div class="remediate-result result-failed">${esc(data.error)}</div>`;
+  } else if (data.results) {
+    const s = data.summary;
+    html += `<div style="margin-bottom:12px;font-size:14px;color:#f0f6fc">${s.fixed} fixed, ${s.failed} failed, ${s.skipped} skipped (${s.total} total)</div>`;
+    data.results.forEach(r => {
+      const cls = r.status === 'fixed' ? 'result-fixed' : r.status === 'nothing_to_fix' || r.status === 'no_script' ? 'result-skipped' : 'result-failed';
+      const label = r.status === 'fixed' ? 'Fixed' : r.status === 'nothing_to_fix' ? 'Nothing to fix' : r.status === 'no_script' ? 'No script' : 'Failed';
+      html += `<div class="remediate-result ${cls}">Check ${r.check} - ${esc(r.name || '')}: ${label}</div>`;
+    });
+  }
+  document.getElementById('modalBody').innerHTML = html;
+  btn.disabled = false;
+  btn.textContent = 'Remediate All';
+  refreshAll();
 }
 
 // Countdown timer

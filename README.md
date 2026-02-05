@@ -32,6 +32,9 @@ chmod +x scripts/*.sh
 # Run a scan
 ./scripts/scan.sh
 
+# Auto-fix common findings
+./scripts/remediate.sh
+
 # Start the web dashboard
 node dashboard/server.js
 # Open http://localhost:18800
@@ -49,6 +52,10 @@ crontab -l | { cat; echo "0 6 * * * $(pwd)/scripts/daily-scan-cron.sh"; } | cron
 openclaw-security-monitor/
   scripts/
     scan.sh              # 32-point threat scanner (v2.2)
+    remediate.sh         # Orchestrator: scan + per-check remediation
+    remediate/
+      _common.sh         # Shared helpers (log, confirm, fix_perms)
+      check-01-c2-ips.sh ... check-32-mcp-security.sh  # 32 per-check scripts
     dashboard.sh         # CLI security dashboard with witr
     network-check.sh     # Network activity monitor
     daily-scan-cron.sh   # Cron wrapper + Telegram alerts
@@ -863,6 +870,79 @@ cat ~/.openclaw/mcp.json | python3 -m json.tool
 lsof -i -nP | grep -E "node|mcp" | grep ESTABLISHED
 ```
 
+## Auto-Remediation
+
+The `remediate.sh` orchestrator runs `scan.sh`, parses the results, skips CLEAN checks, and executes per-check remediation scripts for each WARNING/CRITICAL finding.
+
+```bash
+# Scan + remediate (interactive)
+./scripts/remediate.sh
+
+# Auto-approve all fixes
+./scripts/remediate.sh --yes
+
+# Dry run — preview what would be fixed
+./scripts/remediate.sh --dry-run
+
+# Remediate a single check
+./scripts/remediate.sh --check 7 --dry-run
+
+# Run all 32 scripts without scanning
+./scripts/remediate.sh --all
+```
+
+### Per-Check Remediation Scripts
+
+Each of the 32 scan checks has a dedicated remediation script in `scripts/remediate/`. Scripts are standalone, support `--yes` and `--dry-run`, and return exit 0 (fixed), 1 (failed), or 2 (nothing to fix).
+
+| Script | Check | Type |
+|--------|-------|------|
+| `check-01-c2-ips.sh` | C2 Infrastructure | Guidance |
+| `check-02-amos-stealer.sh` | AMOS Stealer | Guidance |
+| `check-03-reverse-shells.sh` | Reverse Shells | Auto-fix (Gatekeeper) |
+| `check-04-exfil-endpoints.sh` | Exfil Endpoints | Auto-fix (/etc/hosts) |
+| `check-05-crypto-wallet.sh` | Crypto Wallets | Guidance |
+| `check-06-curl-pipe.sh` | Curl-Pipe Attacks | Auto-fix (tools.deny) |
+| `check-07-file-perms.sh` | File Permissions | Auto-fix (chmod) |
+| `check-08-skill-integrity.sh` | Skill Integrity | Guidance |
+| `check-09-skillmd-inject.sh` | SKILL.md Injection | Guidance |
+| `check-10-memory-poison.sh` | Memory Poisoning | Guidance |
+| `check-11-base64-obfusc.sh` | Base64 Obfuscation | Guidance |
+| `check-12-binary-dl.sh` | Binary Downloads | Guidance |
+| `check-13-gateway-config.sh` | Gateway Config | Auto-fix (bind/auth) |
+| `check-14-websocket-sec.sh` | WebSocket Security | Guidance |
+| `check-15-malicious-pub.sh` | Malicious Publishers | Guidance |
+| `check-16-env-leakage.sh` | Env Leakage | Guidance |
+| `check-17-dm-policy.sh` | DM Policy | Auto-fix (restricted) |
+| `check-18-tool-policy.sh` | Tool Policy | Auto-fix (deny list) |
+| `check-19-sandbox-config.sh` | Sandbox Config | Auto-fix (enable) |
+| `check-20-mdns-exposure.sh` | mDNS Exposure | Auto-fix (disable) |
+| `check-21-session-perms.sh` | Session Perms | Auto-fix (chmod) |
+| `check-22-persistence.sh` | Persistence | Guidance |
+| `check-23-plugin-audit.sh` | Plugin Audit | Guidance |
+| `check-24-log-redaction.sh` | Log Redaction | Auto-fix (enable) |
+| `check-25-proxy-bypass.sh` | Proxy Bypass | Auto-fix (config) |
+| `check-26-exec-approvals.sh` | Exec Approvals | Auto-fix (perms) |
+| `check-27-docker-sec.sh` | Docker Security | Guidance |
+| `check-28-nodejs-cve.sh` | Node.js CVE | Guidance |
+| `check-29-plaintext-creds.sh` | Plaintext Creds | Guidance |
+| `check-30-vscode-trojans.sh` | VS Code Trojans | Auto-fix (remove) |
+| `check-31-internet-expose.sh` | Internet Exposure | Auto-fix (bind) |
+| `check-32-mcp-security.sh` | MCP Security | Auto-fix (config) |
+
+**Auto-fix** scripts modify the system (permissions, config settings, /etc/hosts).
+**Guidance** scripts print manual instructions for destructive or external actions (skill removal, credential rotation, Docker changes).
+
+### Exit codes
+
+| Code | Meaning |
+|------|---------|
+| 0 | Fixes applied successfully |
+| 1 | Some fixes failed |
+| 2 | Nothing to fix |
+
+All actions are logged to `~/.openclaw/logs/remediation.log`.
+
 ## IOC Database
 
 ### C2 IP Addresses
@@ -953,7 +1033,7 @@ Zero-dependency Node.js server on port 18800 with:
 
 ![Dashboard Header](docs/images/dashboard-header.png)
 
-**Security checks grid** — all 24 checks with color-coded status cards (green=clean, yellow=warning, red=critical):
+**Security checks grid** — all 32 checks with color-coded status cards (green=clean, yellow=warning, red=critical):
 
 ![Security Checks](docs/images/security-checks.png)
 
@@ -1081,6 +1161,36 @@ Other open-source projects for securing OpenClaw deployments:
 | **prompt-guard** | Prompt injection defense system for OpenClaw/Clawdbot | [ClawHub](https://github.com/openclaw/skills) |
 
 **How this project differs:** openclaw-security-monitor runs *outside* the agent as independent host-level monitoring — it scans the filesystem, network, processes, and gateway configuration directly, without relying on the agent's own tools or trust boundaries. This provides defense-in-depth even if the agent itself is compromised.
+
+## Install as OpenClaw Skill
+
+Deploy directly into the OpenClaw agent's skill directory for in-agent access:
+
+```bash
+# From GitHub
+git clone https://github.com/adibirzu/openclaw-security-monitor.git \
+  ~/.openclaw/workspace/skills/security-monitor
+chmod +x ~/.openclaw/workspace/skills/security-monitor/scripts/*.sh
+```
+
+The agent auto-discovers skills from `~/.openclaw/workspace/skills/` via SKILL.md frontmatter. After installation, these commands are available in the agent:
+
+| Command | Description |
+|---------|-------------|
+| `/security-scan` | Run 32-point security scan |
+| `/security-remediate` | Auto-fix common findings |
+| `/security-dashboard` | CLI security dashboard |
+| `/security-network` | Network connection monitor |
+| `/security-setup-telegram` | Configure Telegram alerts |
+
+To verify installation:
+```bash
+# Check skill is visible
+openclaw skills list | grep security-monitor
+
+# Test scan through the agent
+# In the agent, type: /security-scan
+```
 
 ## Requirements
 

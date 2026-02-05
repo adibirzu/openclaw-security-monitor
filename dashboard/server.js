@@ -15,9 +15,11 @@ const SCRIPTS = path.join(OPENCLAW, 'workspace/skills/security-monitor/scripts')
 const LOGS = path.join(OPENCLAW, 'logs');
 const DASHBOARD_DIR = __dirname;
 const SCRIPT_TIMEOUT = 30000;
+const REMEDIATE_TIMEOUT = 120000;
 const ENV_PATH = `${HOME}/.local/bin:/opt/homebrew/opt/node@22/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin`;
 
 let scanLock = false;
+let remediateLock = false;
 let lastScanResult = null;
 let lastScanTime = null;
 const startTime = Date.now();
@@ -54,6 +56,27 @@ function runCmd(cmd, args = []) {
   });
 }
 
+function runRemediateScript(scriptPath, args = []) {
+  return new Promise((resolve) => {
+    const env = { ...process.env, PATH: ENV_PATH, HOME };
+    execFile('/bin/bash', [scriptPath, ...args], { timeout: REMEDIATE_TIMEOUT, env, maxBuffer: 1024 * 1024 }, (err, stdout, stderr) => {
+      resolve({ exitCode: err ? (err.code || 1) : 0, stdout: stdout || '', stderr: stderr || '', error: err ? err.message : null });
+    });
+  });
+}
+
+function findCheckScript(num) {
+  const padded = String(num).padStart(2, '0');
+  const remDir = path.join(SCRIPTS, 'remediate');
+  try {
+    const files = fs.readdirSync(remDir);
+    const match = files.find(f => f.startsWith(`check-${padded}-`) && f.endsWith('.sh'));
+    return match ? path.join(remDir, match) : null;
+  } catch (e) {
+    return null;
+  }
+}
+
 // Parsers
 
 function parseScanOutput(stdout, exitCode) {
@@ -61,10 +84,10 @@ function parseScanOutput(stdout, exitCode) {
   const checks = [];
   let current = null;
   for (const line of lines) {
-    const checkMatch = line.match(/^\[(\d+)\/\d+\]\s+(.+)/);
+    const checkMatch = line.match(/^\[(\d+)\/(\d+)\]\s+(.+)/);
     if (checkMatch) {
       if (current) checks.push(current);
-      current = { num: parseInt(checkMatch[1]), name: checkMatch[2].replace(/\.\.\.$/, '').trim(), status: 'UNKNOWN', details: '' };
+      current = { num: parseInt(checkMatch[1]), total: parseInt(checkMatch[2]), name: checkMatch[3].replace(/\.\.\.$/, '').trim(), status: 'UNKNOWN', details: '' };
       continue;
     }
     if (current) {
@@ -290,7 +313,76 @@ async function handleRequest(req, res) {
       lastScanStatus: lastScanResult ? lastScanResult.parsed.status : null,
       gatewayReachable,
       scanLocked: scanLock,
+      remediateLocked: remediateLock,
     });
+    return;
+  }
+
+  // API: Remediate single check
+  const checkMatch = route.match(/^\/api\/remediate\/check\/(\d+)$/);
+  if (checkMatch && method === 'POST') {
+    if (remediateLock) {
+      json(res, { error: 'Remediation already in progress' }, 423);
+      return;
+    }
+    const checkNum = parseInt(checkMatch[1]);
+    const scriptPath = findCheckScript(checkNum);
+    if (!scriptPath) {
+      json(res, { error: `No remediation script found for check ${checkNum}` }, 404);
+      return;
+    }
+    remediateLock = true;
+    try {
+      const result = await runRemediateScript(scriptPath, ['--yes']);
+      json(res, {
+        check: checkNum,
+        exitCode: result.exitCode,
+        status: result.exitCode === 0 ? 'fixed' : result.exitCode === 2 ? 'nothing_to_fix' : 'failed',
+        output: result.stdout,
+        stderr: result.stderr,
+        error: result.error,
+      });
+    } finally {
+      remediateLock = false;
+    }
+    return;
+  }
+
+  // API: Remediate all non-clean checks
+  if (route === '/api/remediate/all' && method === 'POST') {
+    if (remediateLock) {
+      json(res, { error: 'Remediation already in progress' }, 423);
+      return;
+    }
+    remediateLock = true;
+    try {
+      // Run scan first to determine which checks need remediation
+      const scanResult = await runScript('scan.sh');
+      const parsed = parseScanOutput(scanResult.stdout, scanResult.exitCode);
+      const results = [];
+      for (const check of parsed.checks) {
+        if (check.status === 'CLEAN') continue;
+        const scriptPath = findCheckScript(check.num);
+        if (!scriptPath) {
+          results.push({ check: check.num, name: check.name, status: 'no_script', output: '' });
+          continue;
+        }
+        const result = await runRemediateScript(scriptPath, ['--yes']);
+        results.push({
+          check: check.num,
+          name: check.name,
+          exitCode: result.exitCode,
+          status: result.exitCode === 0 ? 'fixed' : result.exitCode === 2 ? 'nothing_to_fix' : 'failed',
+          output: result.stdout,
+        });
+      }
+      const fixed = results.filter(r => r.status === 'fixed').length;
+      const failed = results.filter(r => r.status === 'failed').length;
+      const skipped = results.filter(r => r.status === 'nothing_to_fix' || r.status === 'no_script').length;
+      json(res, { results, summary: { fixed, failed, skipped, total: results.length } });
+    } finally {
+      remediateLock = false;
+    }
     return;
   }
 
