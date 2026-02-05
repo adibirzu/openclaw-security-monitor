@@ -368,9 +368,16 @@ fi
 # ============================================================
 header 16 "Scanning for sensitive environment/credential leakage..."
 
-ENV_PATTERN="\.env|\.bashrc|\.zshrc|\.ssh/|id_rsa|id_ed25519|\.aws/credentials|\.kube/config|\.docker/config|keychain|login\.keychain|Cookies\.binarycookies|\.clawdbot/\.env|\.openclaw/openclaw\.json|auth-profiles\.json|\.git-credentials|\.netrc"
-# Only flag skills that READ these files (not just mention them in docs)
+ENV_PATTERN="\.env|\.bashrc|\.zshrc|\.ssh/|id_rsa|id_ed25519|\.aws/credentials|\.kube/config|\.docker/config|keychain|login\.keychain|Cookies\.binarycookies|\.clawdbot/\.env|\.openclaw/openclaw\.json|auth-profiles\.json|\.git-credentials|\.netrc|moltbook.*token|moltbook.*api|MOLTBOOK_TOKEN|OPENAI_API_KEY|ANTHROPIC_API_KEY|sk-[a-zA-Z0-9]"
+# Only flag skills that READ these files or reference API key patterns (not just mention them in docs)
 ENV_HITS=$(grep -rlinE --exclude-dir=security-monitor "cat.*(${ENV_PATTERN})|read.*(${ENV_PATTERN})|open.*(${ENV_PATTERN})|fs\.read.*(${ENV_PATTERN})|source.*(${ENV_PATTERN})" "$SKILLS_DIR" 2>/dev/null || true)
+
+# Also check for hardcoded API keys or Moltbook tokens in skill code (CSA report)
+API_KEY_HITS=$(grep -rlinE --exclude-dir=security-monitor "sk-[a-zA-Z0-9]{20,}|OPENAI_API_KEY\s*=\s*['\"][^$]|ANTHROPIC_API_KEY\s*=\s*['\"][^$]|moltbook.*token\s*=\s*['\"]" "$SKILLS_DIR" 2>/dev/null || true)
+if [ -n "$API_KEY_HITS" ]; then
+    result_critical "Hardcoded API keys or Moltbook tokens found in:"
+    log "$API_KEY_HITS"
+fi
 if [ -n "$ENV_HITS" ]; then
     result_warn "Skills accessing sensitive env/credential files:"
     log "$ENV_HITS"

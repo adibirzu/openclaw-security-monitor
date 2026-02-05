@@ -54,6 +54,29 @@ else
 fi
 echo ""
 
+# Moltbook platform connections (CSA report: poisoned content, credential exposure)
+echo "--- Moltbook Platform Connections ---"
+MOLTBOOK_CONNS=$(lsof -i -nP 2>/dev/null | grep -i "moltbook" || true)
+if [ -n "$MOLTBOOK_CONNS" ]; then
+    echo "INFO: Active connections to Moltbook platform detected:"
+    echo "$MOLTBOOK_CONNS"
+    echo "  Note: Monitor for credential exposure and content poisoning (CSA advisory)"
+else
+    echo "  No Moltbook connections"
+fi
+echo ""
+
+# Non-standard port connections from agent processes
+echo "--- Agent Non-Standard Port Connections ---"
+AGENT_CONNS=$(lsof -i -nP 2>/dev/null | grep -E "node|openclaw|moltbot|clawdbot" | grep -vE ":443 |:80 |:18789 |:18800 |LISTEN" | grep "ESTABLISHED" || true)
+if [ -n "$AGENT_CONNS" ]; then
+    echo "INFO: Agent connections on non-standard ports:"
+    echo "$AGENT_CONNS"
+else
+    echo "  No non-standard port connections from agent processes"
+fi
+echo ""
+
 # Listening ports
 echo "--- Listening Ports (node) ---"
 lsof -i -nP 2>/dev/null | grep -E "node|openclaw" | grep LISTEN | awk '{print $1, $9}' | sort -u || echo "  No node listeners"

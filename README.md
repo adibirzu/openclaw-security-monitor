@@ -261,6 +261,9 @@ This project's detection patterns are built from published security research:
 | [OODA Loop](https://oodaloop.com/briefs/technology/malicious-openclaw-skill-targets-crypto-users-on-clawhub/) | Malicious Skill Targets Crypto Users | ClawHub marketplace attack analysis |
 | [ThaiCERT](https://www.thaicert.or.th/en/2026/02/04/researchers-discover-over-200-malicious-skills-on-openclaw-distributing-password-stealing-malware/) | 200+ Malicious Skills Advisory | National CERT advisory on OpenClaw malware distribution |
 | [Snyk](https://snyk.io/articles/clawdhub-malicious-campaign-ai-agent-skills/) | clawdhub Campaign Deep-Dive | Base64 payload chains, glot.io hosting, zaycv/Ddoy233 accounts, NovaStealer |
+| [CSA AI Safety Initiative](https://cloudsecurityalliance.org) | Moltbook and OpenClaw Security Research Note | Moltbook DB exposure (1.5M API tokens), agent impersonation, lethal trifecta, enterprise risk assessment |
+| [Wiz Research](https://www.wiz.io/blog/exposed-moltbook-database-reveals-millions-of-api-keys) | Hacking Moltbook: 1.5M API Keys | Moltbook Supabase exposure, plaintext OpenAI keys, agent credential theft |
+| [Palo Alto Networks](https://venturebeat.com/security/openclaw-agentic-ai-security-risk-ciso-guide) | Lethal Trifecta Analysis | Private data access + untrusted content + external communication |
 
 ## Related Security Tools
 
