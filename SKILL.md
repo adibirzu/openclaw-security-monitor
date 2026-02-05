@@ -11,7 +11,7 @@ Real-time security monitoring with threat intelligence from ClawHavoc research, 
 ## Commands
 
 ### /security-scan
-Run a comprehensive 16-point security scan:
+Run a comprehensive 24-point security scan:
 1. Known C2 IPs (ClawHavoc: 91.92.242.x, 95.92.242.x, 54.91.154.110)
 2. AMOS stealer / AuthTool markers
 3. Reverse shells & backdoors (bash, python, perl, ruby, php, lua)
@@ -28,6 +28,14 @@ Run a comprehensive 16-point security scan:
 14. WebSocket origin validation (CVE-2026-25253)
 15. Known malicious publisher detection (hightower6eu, etc.)
 16. Sensitive environment/credential file leakage
+17. DM policy audit (open/wildcard channel access)
+18. Tool policy / elevated tools audit
+19. Sandbox configuration check
+20. mDNS/Bonjour exposure detection
+21. Session & credential file permissions
+22. Persistence mechanism scan (LaunchAgents, crontabs, systemd)
+23. Plugin/extension security audit
+24. Log redaction settings audit
 
 ```bash
 bash ~/.openclaw/workspace/skills/security-monitor/scripts/scan.sh
@@ -87,8 +95,12 @@ crontab -l | { cat; echo "0 6 * * * $HOME/.openclaw/workspace/skills/security-mo
 
 ## Threat Coverage
 
-Based on research from:
+Based on research from 30+ security sources including:
 - [ClawHavoc: 341 Malicious Skills](https://www.koi.ai/blog/clawhavoc-341-malicious-clawedbot-skills-found-by-the-bot-they-were-targeting) (Koi Security)
 - [CVE-2026-25253: 1-Click RCE](https://thehackernews.com/2026/02/openclaw-bug-enables-one-click-remote.html)
 - [From SKILL.md to Shell Access](https://snyk.io/articles/skill-md-shell-access/) (Snyk)
 - [VirusTotal: From Automation to Infection](https://blog.virustotal.com/2026/02/from-automation-to-infection-how.html)
+- [OpenClaw Official Security Docs](https://docs.openclaw.ai/gateway/security)
+- [DefectDojo Hardening Checklist](https://defectdojo.com/blog/the-openclaw-hardening-checklist-in-depth-edition)
+- [Vectra: Automation as Backdoor](https://www.vectra.ai/blog/clawdbot-to-moltbot-to-openclaw-when-automation-becomes-a-digital-backdoor)
+- [Cisco: AI Agents Security Nightmare](https://blogs.cisco.com/ai/personal-ai-agents-like-openclaw-are-a-security-nightmare)

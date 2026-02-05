@@ -12,7 +12,7 @@ This project provides defense-in-depth monitoring for self-hosted OpenClaw insta
 
 ## Features
 
-- **16-point security scan** covering C2 infrastructure, stealers, reverse shells, credential exfiltration, memory poisoning, SKILL.md injection, WebSocket hijacking, and more
+- **24-point security scan** covering C2 infrastructure, stealers, reverse shells, credential exfiltration, memory poisoning, SKILL.md injection, WebSocket hijacking, DM/tool/sandbox policies, persistence mechanisms, plugin auditing, and more
 - **IOC database** with known C2 IPs, malicious domains, file hashes, publisher blacklists, and skill name patterns
 - **Auto-updating IOC feeds** that pull latest threat intelligence from upstream
 - **Web dashboard** (dark-themed, zero dependencies) with real-time status, process trees, network monitoring, and scan history
@@ -48,7 +48,7 @@ crontab -l | { cat; echo "0 6 * * * $(pwd)/scripts/daily-scan-cron.sh"; } | cron
 ```
 openclaw-security-monitor/
   scripts/
-    scan.sh              # 16-point threat scanner (v2.0)
+    scan.sh              # 24-point threat scanner (v2.1)
     dashboard.sh         # CLI security dashboard with witr
     network-check.sh     # Network activity monitor
     daily-scan-cron.sh   # Cron wrapper + Telegram alerts
@@ -67,7 +67,7 @@ openclaw-security-monitor/
     threat-model.md      # Threat model and attack vectors
 ```
 
-## Scan Checks (16)
+## Scan Checks (24)
 
 | # | Check | Severity | Detects |
 |---|-------|----------|---------|
@@ -87,6 +87,14 @@ openclaw-security-monitor/
 | 14 | WebSocket Security | CRITICAL | CVE-2026-25253 origin validation bypass |
 | 15 | Malicious Publishers | CRITICAL | Skills from known-bad ClawHub accounts |
 | 16 | Environment Leakage | WARNING | Skills reading .env, .ssh, .aws, keychain files |
+| 17 | DM Policy Audit | WARNING | Channel dmPolicy set to "open", wildcard allowFrom |
+| 18 | Tool Policy Audit | CRITICAL | Elevated tools with wildcard access, empty deny list |
+| 19 | Sandbox Config | WARNING | Sandboxing disabled or set to "off" |
+| 20 | mDNS/Bonjour Exposure | WARNING | mDNS broadcasting in "full" mode (leaks paths) |
+| 21 | Session/Credential Perms | WARNING | Credentials dir, sessions, home dir permissions |
+| 22 | Persistence Mechanisms | WARNING | Unauthorized LaunchAgents, crontabs, systemd services |
+| 23 | Plugin/Extension Audit | CRITICAL | Extensions with exec patterns or malicious domains |
+| 24 | Log Redaction Audit | WARNING | Log redaction disabled, world-readable log directories |
 
 ## IOC Database
 
@@ -152,7 +160,7 @@ The `update-ioc.sh` script:
 
 Zero-dependency Node.js server on port 18800 with:
 - Scan summary donut chart
-- 16 color-coded security check cards
+- 24 color-coded security check cards
 - Gateway status and configuration audit
 - Process tree via `witr` showing ancestry chains
 - Network connections and listening ports
@@ -220,6 +228,37 @@ This project's detection patterns are built from published security research:
 | [PointGuard AI](https://www.pointguardai.com/ai-security-incidents/openclaw-clawhub-malicious-skills-supply-chain-attack) | Supply Chain Attack Analysis | Attack timeline, scope |
 | [SC Media](https://www.scworld.com/news/openclaw-agents-targeted-with-341-malicious-clawhub-skills) | 341 Malicious Skills | Technical indicators |
 | [DepthFirst](https://depthfirst.com/post/1-click-rce-to-steal-your-moltbot-data-and-keys) | 1-Click RCE Exploit | CVE-2026-25253 original PoC research |
+| [OpenClaw Security Docs](https://docs.openclaw.ai/gateway/security) | Official Security Guide | DM policies, sandbox config, tool restrictions, mDNS, log redaction |
+| [DefectDojo](https://defectdojo.com/blog/the-openclaw-hardening-checklist-in-depth-edition) | Hardening Checklist (In-Depth) | File permissions, session isolation, incident response, audit commands |
+| [Penligent AI](https://www.penligent.ai/hackinglabs/openclaw-sovereign-ai-security-manifest-a-comprehensive-post-mortem-and-architectural-hardening-guide-for-openclaw-ai-2026/) | Sovereign AI Security Manifest | Docker gVisor isolation, EASM, exploit path analysis, OIDC enforcement |
+| [Vectra AI](https://www.vectra.ai/blog/clawdbot-to-moltbot-to-openclaw-when-automation-becomes-a-digital-backdoor) | When Automation Becomes a Backdoor | Host/network IoCs, persistence detection, credential harvesting patterns |
+| [VentureBeat](https://venturebeat.com/security/openclaw-agentic-ai-security-risk-ciso-guide) | CISO Guide to Agentic AI Risk | Agentic hijacking patterns, blast radius analysis |
+| [Guardz](https://guardz.com/blog/openclaw-hardening-for-msps/) | OpenClaw Hardening for MSPs | MSP-oriented hardening, kill switch procedures, skill verification |
+| [Composio](https://composio.dev/blog/secure-openclaw-moltbot-clawdbot-setup) | Docker Hardening Guide | Non-root containers, read-only FS, restricted outbound, capability dropping |
+| [AuthMind](https://www.authmind.com/post/openclaw-malicious-skills-agentic-ai-supply-chain) | Agentic AI Supply Chain Attack | Identity security, agent capability dependencies |
+| [BleepingComputer](https://www.bleepingcomputer.com/news/security/malicious-moltbot-skills-used-to-push-password-stealing-malware/) | MoltBot Malware Distribution | 400+ malware packages timeline, password stealer delivery |
+| [SecurityAffairs](https://securityaffairs.com/187562/malware/moltbot-skills-exploited-to-distribute-400-malware-packages-in-days.html) | 400+ Malware Packages in Days | MoltBot/OpenClaw exploitation timeline and scale |
+| [TechBuzz](https://www.techbuzz.ai/articles/openclaw-ai-agent-goes-viral-despite-security-flaws) | OpenClaw Goes Viral Despite Flaws | Ecosystem analysis, security tradeoffs |
+| [Consortium.net](https://consortium.net/blog/security-advisory-openclaw-moltbot-ai-agents) | Security Advisory | Comprehensive advisory for OpenClaw/Moltbot deployments |
+| [Security.com](https://www.security.com/expert-perspectives/rise-openclaw) | The Rise of OpenClaw | Expert perspectives on OpenClaw security landscape |
+
+## Related Security Tools
+
+Other open-source projects for securing OpenClaw deployments:
+
+| Tool | Description | URL |
+|------|-------------|-----|
+| **Cisco Skill Scanner** | Static + behavioral + LLM analysis of agent skills (YARA, AST, VirusTotal) | [cisco-ai-defense/skill-scanner](https://github.com/cisco-ai-defense/skill-scanner) |
+| **Cisco MCP Scanner** | Scan MCP servers for threats and security findings | [cisco-ai-defense/mcp-scanner](https://github.com/cisco-ai-defense/mcp-scanner) |
+| **openclaw-secure-start** | Pre-first-run hardening: gateway binding, tool policies, VPS/Pi configs | [pottertech/openclaw-secure-start](https://github.com/pottertech/openclaw-secure-start) |
+| **Clawdex** | Koi Security's skill reputation checker (web + installed skill scan) | [koi.ai](https://www.koi.ai) |
+| **skillvet** | Security scanner for ClawHub skills: malware, exfil, prompt injection | [ClawHub](https://github.com/openclaw/skills) |
+| **skill-flag** | Pattern-based backdoor and malware scanner for OpenClaw skills | [ClawHub](https://github.com/openclaw/skills) |
+| **clawdefender** | Security scanner and input sanitizer for AI agents | [ClawHub](https://github.com/openclaw/skills) |
+| **agentguard** | Security monitoring skill for OpenClaw agents | [ClawHub](https://github.com/openclaw/skills) |
+| **prompt-guard** | Prompt injection defense system for OpenClaw/Clawdbot | [ClawHub](https://github.com/openclaw/skills) |
+
+**How this project differs:** openclaw-security-monitor runs *outside* the agent as independent host-level monitoring — it scans the filesystem, network, processes, and gateway configuration directly, without relying on the agent's own tools or trust boundaries. This provides defense-in-depth even if the agent itself is compromised.
 
 ## Requirements
 

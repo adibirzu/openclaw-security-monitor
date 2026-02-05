@@ -1,10 +1,11 @@
 #!/bin/bash
-# OpenClaw Security Monitor - Enhanced Threat Scanner v2.0
+# OpenClaw Security Monitor - Enhanced Threat Scanner v2.1
 # https://github.com/adibirzu/openclaw-security-monitor
 #
-# Detects: ClawHavoc AMOS stealer, C2 infrastructure, reverse shells,
-#          credential exfiltration, memory poisoning, WebSocket hijacking,
-#          typosquatting, SKILL.md injection, and more.
+# 24-point security scanner. Detects: ClawHavoc AMOS stealer, C2
+# infrastructure, reverse shells, credential exfiltration, memory
+# poisoning, WebSocket hijacking, SKILL.md injection, DM/tool/sandbox
+# policy violations, persistence mechanisms, plugin threats, and more.
 #
 # Exit codes: 0=SECURE, 1=WARNINGS, 2=COMPROMISED
 set -uo pipefail
@@ -34,7 +35,7 @@ result_warn() { log "WARNING: $1"; WARNINGS=$((WARNINGS + 1)); }
 result_critical() { log "CRITICAL: $1"; CRITICAL=$((CRITICAL + 1)); }
 
 # Count total checks
-TOTAL_CHECKS=16
+TOTAL_CHECKS=24
 
 log "========================================"
 log "OPENCLAW SECURITY SCAN - $TIMESTAMP"
@@ -375,6 +376,258 @@ if [ -n "$ENV_HITS" ]; then
     log "$ENV_HITS"
 else
     result_clean "No sensitive environment leakage"
+fi
+
+# ============================================================
+# CHECK 17: DM Policy Audit (NEW - OpenClaw Security Docs)
+# ============================================================
+header 17 "Auditing DM access policies..."
+
+DM_ISSUES=0
+if command -v openclaw &>/dev/null; then
+    for channel in whatsapp telegram discord slack signal; do
+        DM_POLICY=$(timeout 10 openclaw config get "channels.${channel}.dmPolicy" 2>/dev/null || echo "")
+        if [ "$DM_POLICY" = "open" ]; then
+            result_warn "Channel '$channel' has dmPolicy='open' (anyone can message)"
+            DM_ISSUES=$((DM_ISSUES + 1))
+        fi
+        # Check for wildcard in allowFrom
+        ALLOW_FROM=$(timeout 10 openclaw config get "channels.${channel}.allowFrom" 2>/dev/null || echo "")
+        if echo "$ALLOW_FROM" | grep -q '"*"' 2>/dev/null; then
+            result_warn "Channel '$channel' has wildcard '*' in allowFrom"
+            DM_ISSUES=$((DM_ISSUES + 1))
+        fi
+    done
+fi
+if [ "$DM_ISSUES" -eq 0 ]; then
+    result_clean "DM policies acceptable"
+fi
+
+# ============================================================
+# CHECK 18: Tool Policy / Elevated Tools Audit (NEW - DefectDojo)
+# ============================================================
+header 18 "Auditing tool policies and elevated access..."
+
+TOOL_ISSUES=0
+if command -v openclaw &>/dev/null; then
+    # Check if elevated tools are broadly enabled
+    ELEVATED=$(timeout 10 openclaw config get "tools.elevated.enabled" 2>/dev/null || echo "")
+    if [ "$ELEVATED" = "true" ]; then
+        ELEVATED_ALLOW=$(timeout 10 openclaw config get "tools.elevated.allowFrom" 2>/dev/null || echo "")
+        if echo "$ELEVATED_ALLOW" | grep -q '"*"' 2>/dev/null; then
+            result_critical "Elevated tools enabled with wildcard allowFrom"
+            TOOL_ISSUES=$((TOOL_ISSUES + 1))
+        else
+            log "  INFO: Elevated tools enabled (restricted allowFrom)"
+        fi
+    fi
+
+    # Check if exec tool is in deny list
+    DENY_LIST=$(timeout 10 openclaw config get "tools.deny" 2>/dev/null || echo "")
+    if [ -z "$DENY_LIST" ] || [ "$DENY_LIST" = "[]" ] || [ "$DENY_LIST" = "null" ]; then
+        result_warn "No tools in deny list (consider blocking: exec, process, browser)"
+        TOOL_ISSUES=$((TOOL_ISSUES + 1))
+    fi
+fi
+if [ "$TOOL_ISSUES" -eq 0 ]; then
+    result_clean "Tool policies acceptable"
+fi
+
+# ============================================================
+# CHECK 19: Sandbox Configuration (NEW - Penligent/Composio)
+# ============================================================
+header 19 "Checking sandbox configuration..."
+
+SANDBOX_ISSUES=0
+if command -v openclaw &>/dev/null; then
+    SANDBOX_MODE=$(timeout 10 openclaw config get "sandbox.mode" 2>/dev/null || echo "")
+    if [ "$SANDBOX_MODE" = "off" ] || [ "$SANDBOX_MODE" = "none" ]; then
+        result_warn "Sandbox mode is disabled (consider: mode='all')"
+        SANDBOX_ISSUES=$((SANDBOX_ISSUES + 1))
+    elif [ -n "$SANDBOX_MODE" ]; then
+        log "  Sandbox mode: $SANDBOX_MODE"
+    fi
+
+    WORKSPACE_ACCESS=$(timeout 10 openclaw config get "sandbox.workspaceAccess" 2>/dev/null || echo "")
+    if [ "$WORKSPACE_ACCESS" = "rw" ]; then
+        log "  INFO: Sandbox workspace access is read-write"
+    fi
+fi
+if [ "$SANDBOX_ISSUES" -eq 0 ]; then
+    result_clean "Sandbox configuration acceptable"
+fi
+
+# ============================================================
+# CHECK 20: mDNS/Bonjour Exposure (NEW - OpenClaw Docs)
+# ============================================================
+header 20 "Checking mDNS/Bonjour discovery settings..."
+
+MDNS_ISSUES=0
+if command -v openclaw &>/dev/null; then
+    MDNS_MODE=$(timeout 10 openclaw config get "discovery.mdns.mode" 2>/dev/null || echo "")
+    if [ "$MDNS_MODE" = "full" ]; then
+        result_warn "mDNS broadcasting in 'full' mode (exposes paths, SSH port)"
+        MDNS_ISSUES=$((MDNS_ISSUES + 1))
+    elif [ -n "$MDNS_MODE" ]; then
+        log "  mDNS mode: $MDNS_MODE"
+    fi
+fi
+if [ "$MDNS_ISSUES" -eq 0 ]; then
+    result_clean "mDNS configuration acceptable"
+fi
+
+# ============================================================
+# CHECK 21: Session & Credential Permissions (NEW - Vectra/DefectDojo)
+# ============================================================
+header 21 "Auditing session and credential file permissions..."
+
+CRED_ISSUES=0
+# Check credentials directory
+CRED_DIR="$OPENCLAW_DIR/credentials"
+if [ -d "$CRED_DIR" ]; then
+    DIR_PERMS=$(stat -f "%Lp" "$CRED_DIR" 2>/dev/null || stat -c "%a" "$CRED_DIR" 2>/dev/null)
+    if [ "$DIR_PERMS" != "700" ]; then
+        result_warn "Credentials dir has permissions $DIR_PERMS (should be 700)"
+        CRED_ISSUES=$((CRED_ISSUES + 1))
+    fi
+    # Check individual credential files
+    while IFS= read -r cred_file; do
+        FPERMS=$(stat -f "%Lp" "$cred_file" 2>/dev/null || stat -c "%a" "$cred_file" 2>/dev/null)
+        if [ "$FPERMS" != "600" ]; then
+            result_warn "$(basename "$cred_file") has permissions $FPERMS (should be 600)"
+            CRED_ISSUES=$((CRED_ISSUES + 1))
+        fi
+    done < <(find "$CRED_DIR" -type f -name "*.json" 2>/dev/null)
+fi
+
+# Check session files
+for agent_dir in "$OPENCLAW_DIR"/agents/*/; do
+    SESSION_DIR="$agent_dir/sessions"
+    if [ -d "$SESSION_DIR" ]; then
+        SDIR_PERMS=$(stat -f "%Lp" "$SESSION_DIR" 2>/dev/null || stat -c "%a" "$SESSION_DIR" 2>/dev/null)
+        if [ -n "$SDIR_PERMS" ] && [ "$SDIR_PERMS" != "700" ]; then
+            result_warn "Session dir $(basename "$agent_dir")/sessions has permissions $SDIR_PERMS (should be 700)"
+            CRED_ISSUES=$((CRED_ISSUES + 1))
+        fi
+    fi
+done
+
+# Check openclaw home directory itself
+if [ -d "$OPENCLAW_DIR" ]; then
+    HOME_PERMS=$(stat -f "%Lp" "$OPENCLAW_DIR" 2>/dev/null || stat -c "%a" "$OPENCLAW_DIR" 2>/dev/null)
+    if [ "$HOME_PERMS" != "700" ]; then
+        result_warn "OpenClaw home dir has permissions $HOME_PERMS (should be 700)"
+        CRED_ISSUES=$((CRED_ISSUES + 1))
+    fi
+fi
+
+if [ "$CRED_ISSUES" -eq 0 ]; then
+    result_clean "Session and credential permissions correct"
+fi
+
+# ============================================================
+# CHECK 22: Persistence Mechanism Scan (NEW - Vectra)
+# ============================================================
+header 22 "Scanning for unauthorized persistence mechanisms..."
+
+PERSIST_ISSUES=0
+# Check LaunchAgents for suspicious openclaw-related items
+if [ -d "$HOME/Library/LaunchAgents" ]; then
+    SUSPICIOUS_AGENTS=$(find "$HOME/Library/LaunchAgents" -name "*.plist" -exec grep -li "openclaw\|clawdbot\|moltbot" {} \; 2>/dev/null || true)
+    if [ -n "$SUSPICIOUS_AGENTS" ]; then
+        log "  LaunchAgents referencing openclaw:"
+        log "  $SUSPICIOUS_AGENTS"
+        # Check if any are NOT the known security-dashboard
+        for agent in $SUSPICIOUS_AGENTS; do
+            if ! grep -q "com.openclaw.security-dashboard" "$agent" 2>/dev/null; then
+                AGENT_LABEL=$(grep -A1 "<key>Label</key>" "$agent" 2>/dev/null | tail -1 | sed 's/.*<string>\(.*\)<\/string>.*/\1/')
+                result_warn "Unknown LaunchAgent: $AGENT_LABEL ($(basename "$agent"))"
+                PERSIST_ISSUES=$((PERSIST_ISSUES + 1))
+            fi
+        done
+    fi
+fi
+
+# Check crontab for suspicious entries
+CRON_ENTRIES=$(crontab -l 2>/dev/null | grep -iv "security-monitor\|#" | grep -iE "openclaw|clawdbot|moltbot|curl.*\|.*sh|wget.*\|.*bash" || true)
+if [ -n "$CRON_ENTRIES" ]; then
+    result_warn "Suspicious cron entries found:"
+    log "  $CRON_ENTRIES"
+    PERSIST_ISSUES=$((PERSIST_ISSUES + 1))
+fi
+
+# Check for unexpected systemd services (Linux)
+if command -v systemctl &>/dev/null; then
+    SYS_SERVICES=$(systemctl --user list-units --type=service --all 2>/dev/null | grep -iE "openclaw|clawdbot|moltbot" | grep -v "security-monitor" || true)
+    if [ -n "$SYS_SERVICES" ]; then
+        log "  Systemd services:"
+        log "  $SYS_SERVICES"
+    fi
+fi
+
+if [ "$PERSIST_ISSUES" -eq 0 ]; then
+    result_clean "No unauthorized persistence mechanisms"
+fi
+
+# ============================================================
+# CHECK 23: Plugin/Extension Security (NEW - Cisco/DefectDojo)
+# ============================================================
+header 23 "Auditing installed plugins and extensions..."
+
+EXT_DIR="$OPENCLAW_DIR/extensions"
+EXT_ISSUES=0
+if [ -d "$EXT_DIR" ]; then
+    EXT_COUNT=$(find "$EXT_DIR" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l | tr -d " ")
+    log "  Installed extensions: $EXT_COUNT"
+    if [ "$EXT_COUNT" -gt 0 ]; then
+        while IFS= read -r ext; do
+            EXT_NAME=$(basename "$ext")
+            # Check for suspicious patterns in extension code
+            EXT_SUS=$(grep -rlE "eval\(|exec\(|child_process|\.exec\(|net\.connect|http\.request|fetch\(" "$ext" 2>/dev/null | head -3 || true)
+            if [ -n "$EXT_SUS" ]; then
+                result_warn "Extension '$EXT_NAME' has code execution patterns"
+                EXT_ISSUES=$((EXT_ISSUES + 1))
+            fi
+            # Check for known malicious patterns
+            EXT_MAL=$(grep -rlE "$DOMAIN_PATTERN" "$ext" 2>/dev/null || true)
+            if [ -n "$EXT_MAL" ]; then
+                result_critical "Extension '$EXT_NAME' references known malicious domains"
+                EXT_ISSUES=$((EXT_ISSUES + 1))
+            fi
+        done < <(find "$EXT_DIR" -mindepth 1 -maxdepth 1 -type d 2>/dev/null)
+    fi
+fi
+if [ "$EXT_ISSUES" -eq 0 ]; then
+    result_clean "No suspicious plugins/extensions"
+fi
+
+# ============================================================
+# CHECK 24: Log Redaction Audit (NEW - OpenClaw Docs)
+# ============================================================
+header 24 "Checking log redaction settings..."
+
+LOG_ISSUES=0
+if command -v openclaw &>/dev/null; then
+    REDACT=$(timeout 10 openclaw config get "logging.redactSensitive" 2>/dev/null || echo "")
+    if [ "$REDACT" = "off" ] || [ "$REDACT" = "false" ] || [ "$REDACT" = "none" ]; then
+        result_warn "Log redaction is disabled (sensitive data may leak to logs)"
+        LOG_ISSUES=$((LOG_ISSUES + 1))
+    elif [ -n "$REDACT" ]; then
+        log "  Log redaction: $REDACT"
+    fi
+
+    # Check if gateway logs are world-readable
+    GW_LOG="/tmp/openclaw"
+    if [ -d "$GW_LOG" ]; then
+        GW_LOG_PERMS=$(stat -f "%Lp" "$GW_LOG" 2>/dev/null || stat -c "%a" "$GW_LOG" 2>/dev/null)
+        if [ "$GW_LOG_PERMS" != "700" ] && [ "$GW_LOG_PERMS" != "750" ]; then
+            result_warn "Gateway log dir /tmp/openclaw has permissions $GW_LOG_PERMS (should be 700)"
+            LOG_ISSUES=$((LOG_ISSUES + 1))
+        fi
+    fi
+fi
+if [ "$LOG_ISSUES" -eq 0 ]; then
+    result_clean "Log redaction settings acceptable"
 fi
 
 # ============================================================
