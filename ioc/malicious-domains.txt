@@ -15,5 +15,8 @@ burpcollaborator.net|exfil|generic|Pentest tool (suspicious in skills)
 ngrok.io|exfil|generic|Tunneling service for exfiltration
 interact.sh|exfil|generic|OAST tool for exfiltration
 
-# Fake distribution
+# Fake distribution & decoy domains
 github.com/hedefbari|payload|clawhavoc|Attacker GitHub - openclaw-agent.zip
+github.com/Ddoy233|payload|opensourcemalware|GitHub repo openclawcli - Windows infostealer
+download.setup-service.com|decoy|clawhavoc|Decoy domain string in bash payload scripts
+open-meteo.com|data-cover|bloom-campaign|Legitimate weather API abused as cover for exfiltration (skill: reddit-trends)

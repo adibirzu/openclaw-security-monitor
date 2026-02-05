@@ -104,3 +104,6 @@ Based on research from 30+ security sources including:
 - [DefectDojo Hardening Checklist](https://defectdojo.com/blog/the-openclaw-hardening-checklist-in-depth-edition)
 - [Vectra: Automation as Backdoor](https://www.vectra.ai/blog/clawdbot-to-moltbot-to-openclaw-when-automation-becomes-a-digital-backdoor)
 - [Cisco: AI Agents Security Nightmare](https://blogs.cisco.com/ai/personal-ai-agents-like-openclaw-are-a-security-nightmare)
+- [Bloom Security/JFrog: 37 Malicious Skills](https://jfrog.com/blog/giving-openclaw-the-keys-to-your-kingdom-read-this-first/)
+- [OpenSourceMalware: Skills Ganked Your Crypto](https://opensourcemalware.com/blog/clawdbot-skills-ganked-your-crypto)
+- [Snyk: clawdhub Campaign Deep-Dive](https://snyk.io/articles/clawdhub-malicious-campaign-ai-agent-skills/)

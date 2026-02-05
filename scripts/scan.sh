@@ -82,7 +82,7 @@ fi
 # ============================================================
 header 2 "Scanning for AMOS stealer / AuthTool markers..."
 
-AMOS_PATTERN="authtool|atomic.stealer|AMOS|osascript.*password|osascript.*dialog|osascript.*keychain|Security\.framework.*Auth|openclaw-agent\.exe|openclaw-agent\.zip"
+AMOS_PATTERN="authtool|atomic.stealer|AMOS|NovaStealer|nova.stealer|osascript.*password|osascript.*dialog|osascript.*keychain|Security\.framework.*Auth|openclaw-agent\.exe|openclaw-agent\.zip|openclawcli\.zip|AuthTool|Installer-Package"
 AMOS_HITS=$(grep -rliE --exclude-dir=security-monitor "$AMOS_PATTERN" "$SKILLS_DIR" 2>/dev/null || true)
 if [ -n "$AMOS_HITS" ]; then
     result_critical "AMOS/stealer markers found in:"
@@ -96,7 +96,7 @@ fi
 # ============================================================
 header 3 "Scanning for reverse shells & backdoors..."
 
-SHELL_PATTERN="nc -e|/dev/tcp/|mkfifo.*nc|bash -i >|socat.*exec|python.*socket.*connect|nohup.*bash.*tcp|perl.*socket.*INET|ruby.*TCPSocket|php.*fsockopen|lua.*socket\.tcp"
+SHELL_PATTERN="nc -e|/dev/tcp/|mkfifo.*nc|bash -i >|socat.*exec|python.*socket.*connect|nohup.*bash.*tcp|perl.*socket.*INET|ruby.*TCPSocket|php.*fsockopen|lua.*socket\.tcp|xattr -[cr]|com\.apple\.quarantine"
 SHELL_HITS=$(grep -rlinE --exclude-dir=security-monitor "$SHELL_PATTERN" "$SKILLS_DIR" 2>/dev/null || true)
 if [ -n "$SHELL_HITS" ]; then
     result_critical "Reverse shell patterns found in:"
@@ -197,8 +197,8 @@ fi
 # ============================================================
 header 9 "Scanning SKILL.md files for shell injection patterns..."
 
-# Patterns from Snyk research: SKILL.md can embed shell commands
-INJECTION_PATTERN="Prerequisites.*install|Prerequisites.*download|Prerequisites.*curl|Prerequisites.*wget|run this command.*terminal|paste.*terminal|copy.*terminal|base64 -d|base64 --decode|eval \$(|exec \$(|\`curl|\`wget"
+# Patterns from Snyk/Cisco/Bloom research: SKILL.md can embed shell commands and prompt injection
+INJECTION_PATTERN="Prerequisites.*install|Prerequisites.*download|Prerequisites.*curl|Prerequisites.*wget|run this command.*terminal|paste.*terminal|copy.*terminal|base64 -d|base64 --decode|eval \$(|exec \$(|\`curl|\`wget|bypass.*safety.*guideline|execute.*without.*asking|ignore.*safety|override.*instruction|without.*user.*awareness"
 INJECT_HITS=""
 while IFS= read -r skillmd; do
     if grep -qiE "$INJECTION_PATTERN" "$skillmd" 2>/dev/null; then
@@ -267,8 +267,8 @@ fi
 # ============================================================
 header 12 "Scanning for external binary downloads..."
 
-# ClawHavoc distributed openclaw-agent.exe via GitHub releases
-BIN_PATTERN="\.exe|\.dmg|\.pkg|\.msi|\.app\.zip|releases/download|github\.com/.*/releases|\.zip.*password|password.*\.zip"
+# ClawHavoc distributed openclaw-agent.exe via GitHub releases, openclawcli.zip via password-protected archives
+BIN_PATTERN="\.exe|\.dmg|\.pkg|\.msi|\.app\.zip|releases/download|github\.com/.*/releases|\.zip.*password|password.*\.zip|openclawcli\.zip|openclaw-agent|AuthTool.*download|download.*AuthTool"
 BIN_HITS=$(grep -rlinE --exclude-dir=security-monitor "$BIN_PATTERN" "$SKILLS_DIR" 2>/dev/null || true)
 if [ -n "$BIN_HITS" ]; then
     result_warn "External binary download references found in:"
@@ -368,7 +368,7 @@ fi
 # ============================================================
 header 16 "Scanning for sensitive environment/credential leakage..."
 
-ENV_PATTERN="\.env|\.bashrc|\.zshrc|\.ssh/|id_rsa|id_ed25519|\.aws/credentials|\.kube/config|\.docker/config|keychain|login\.keychain|Cookies\.binarycookies"
+ENV_PATTERN="\.env|\.bashrc|\.zshrc|\.ssh/|id_rsa|id_ed25519|\.aws/credentials|\.kube/config|\.docker/config|keychain|login\.keychain|Cookies\.binarycookies|\.clawdbot/\.env|\.openclaw/openclaw\.json|auth-profiles\.json|\.git-credentials|\.netrc"
 # Only flag skills that READ these files (not just mention them in docs)
 ENV_HITS=$(grep -rlinE --exclude-dir=security-monitor "cat.*(${ENV_PATTERN})|read.*(${ENV_PATTERN})|open.*(${ENV_PATTERN})|fs\.read.*(${ENV_PATTERN})|source.*(${ENV_PATTERN})" "$SKILLS_DIR" 2>/dev/null || true)
 if [ -n "$ENV_HITS" ]; then

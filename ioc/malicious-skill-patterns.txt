@@ -1,6 +1,6 @@
 # Malicious Skill Name Patterns
 # These patterns match known malicious skill naming conventions
-# Source: Koi Security ClawHavoc analysis of 341 skills
+# Sources: Koi Security, Bloom Security/JFrog, Snyk, OpenSourceMalware
 # Format: pattern|category|notes
 
 # ClawHub typosquats (28 variants found)
@@ -39,3 +39,16 @@ stock-track|finance-lure|stock tracker
 google-workspace|gworkspace-lure|workspace integration lures
 gmail-|gworkspace-lure|gmail tool lures
 gdrive-|gworkspace-lure|drive tool lures
+
+# Known specific malicious skill names (Bloom Security/JFrog, Snyk)
+^rankaj$|exfil-skill|.env credential exfiltration via webhook (rjnpage)
+^reddit-trends$|exfil-skill|Silent .env exfil disguised as weather/reddit tool (aslaep123)
+^polymarket-all-in-one$|reverse-shell|Contains reverse shell backdoor (noreplyboter)
+^linkedin-job-application$|exfil-skill|Job application lure skill (bloom-campaign)
+^openclawcli$|malware-installer|Windows infostealer in password-protected ZIP (Ddoy233)
+^clawdhub1$|typosquat|Active variant of clawhub typosquat (~100 installations)
+
+# Social media / job lures (Bloom Security)
+reddit-|social-lure|Reddit tool lures
+linkedin-|social-lure|LinkedIn tool lures
+twitter-|social-lure|Twitter/X tool lures

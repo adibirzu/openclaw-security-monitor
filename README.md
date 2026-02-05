@@ -116,6 +116,8 @@ openclaw-security-monitor/
 | `pipedream.net` | Exfiltration | Data exfil |
 | `ngrok.io` | Tunneling | Reverse tunnel for exfiltration |
 | `github.com/hedefbari` | Payload | Attacker GitHub hosting openclaw-agent.zip |
+| `github.com/Ddoy233` | Payload | openclawcli repo - Windows infostealer |
+| `download.setup-service.com` | Decoy | Decoy domain string in bash payload scripts |
 
 ### Known File Hashes (SHA-256)
 | Hash | File | Platform |
@@ -126,19 +128,29 @@ openclaw-security-monitor/
 | `79e8f3f7...2bc1f2` | skill-archive | Any |
 
 ### Malicious Publisher Blacklist
-| Publisher | Skills | Campaign |
-|-----------|--------|----------|
-| `hightower6eu` | 314 | ClawHavoc (crypto, finance, social lures) |
+| Publisher | Skills | Campaign | Source |
+|-----------|--------|----------|--------|
+| `hightower6eu` | 314 | ClawHavoc (crypto, finance, social lures) | Koi Security |
+| `zaycv` | multiple | Bloom campaign (ClawHub + GitHub) | Bloom/JFrog |
+| `noreplyboter` | 2 | Reverse shells (polymarket-all-in-one, better-polymarket) | Bloom/JFrog |
+| `rjnpage` | 1 | .env exfiltration (rankaj) | Bloom/JFrog |
+| `aslaep123` | multiple | Silent exfil (reddit-trends) | Bloom/JFrog |
+| `gpaitai` | multiple | Bloom campaign | Bloom/JFrog |
+| `lvy19811120-gif` | multiple | Bloom campaign | Bloom/JFrog |
+| `Ddoy233` | 1 | Windows infostealer (openclawcli.zip) | Snyk/OpenSourceMalware |
+| `hedefbari` | 1 | openclaw-agent.zip payload hosting | Koi Security |
 
 ### Skill Name Patterns
 Malicious skills mimic popular categories:
-- **Typosquats** (28): `clawhub`, `clawhubb`, `clawwhub`, `cllawhub`, `clawhubcli`
+- **Typosquats** (29): `clawhub`, `clawhubb`, `clawwhub`, `cllawhub`, `clawhubcli`, `clawdhub1`
 - **Crypto** (111): `solana-wallet-*`, `phantom-wallet-*`, `bybit-agent`, `eth-gas-*`
-- **Prediction markets** (34): `polymarket-*`, `better-polymarket`
+- **Prediction markets** (34): `polymarket-*`, `better-polymarket`, `polymarket-all-in-one`
 - **YouTube** (57): `youtube-summarize-*`, `youtube-*-pro`
 - **Auto-updaters** (28): `auto-updat*`
 - **Finance** (51): `yahoo-finance`, `stock-track*`
 - **Google Workspace** (17): `google-workspace-*`, `gmail-*`, `gdrive-*`
+- **Social/job lures** (Bloom): `reddit-trends`, `linkedin-job-application`, `reddit-*`, `linkedin-*`
+- **Known malicious** (specific): `rankaj`, `openclawcli`
 
 ## IOC Auto-Updater
 
@@ -203,6 +215,8 @@ curl -s http://localhost:18800/api/status | python3 -m json.tool
 | CVE | Description | Check |
 |-----|-------------|-------|
 | CVE-2026-25253 | 1-Click RCE via WebSocket hijacking | #14: WebSocket origin validation |
+| CVE-2026-21636 | Permission model bypass | #18: Tool policy audit, #19: Sandbox config |
+| CVE-2026-22708 | Indirect prompt injection | #9: SKILL.md injection, #10: Memory poisoning |
 | CVE-2026-24763 | Command injection | #3: Reverse shell patterns |
 | CVE-2026-25157 | Command injection | #6: Curl-pipe attacks |
 
@@ -241,6 +255,12 @@ This project's detection patterns are built from published security research:
 | [TechBuzz](https://www.techbuzz.ai/articles/openclaw-ai-agent-goes-viral-despite-security-flaws) | OpenClaw Goes Viral Despite Flaws | Ecosystem analysis, security tradeoffs |
 | [Consortium.net](https://consortium.net/blog/security-advisory-openclaw-moltbot-ai-agents) | Security Advisory | Comprehensive advisory for OpenClaw/Moltbot deployments |
 | [Security.com](https://www.security.com/expert-perspectives/rise-openclaw) | The Rise of OpenClaw | Expert perspectives on OpenClaw security landscape |
+| [OpenSourceMalware](https://opensourcemalware.com/blog/clawdbot-skills-ganked-your-crypto) | ClawdBot Skills Ganked Your Crypto | Original ClawHavoc disclosure, zaycv/Ddoy233 accounts, payload analysis |
+| [Bloom Security / JFrog](https://jfrog.com/blog/giving-openclaw-the-keys-to-your-kingdom-read-this-first/) | Keys to Your Kingdom | 37 malicious skills, 3 distinct campaigns, 10 attacker GitHub accounts |
+| [Infosecurity Magazine](https://www.infosecurity-magazine.com/news/malicious-crypto-trading-skills/) | Malicious Crypto Trading Skills | ByBit/Polymarket/Axiom/Reddit/LinkedIn targeting |
+| [OODA Loop](https://oodaloop.com/briefs/technology/malicious-openclaw-skill-targets-crypto-users-on-clawhub/) | Malicious Skill Targets Crypto Users | ClawHub marketplace attack analysis |
+| [ThaiCERT](https://www.thaicert.or.th/en/2026/02/04/researchers-discover-over-200-malicious-skills-on-openclaw-distributing-password-stealing-malware/) | 200+ Malicious Skills Advisory | National CERT advisory on OpenClaw malware distribution |
+| [Snyk](https://snyk.io/articles/clawdhub-malicious-campaign-ai-agent-skills/) | clawdhub Campaign Deep-Dive | Base64 payload chains, glot.io hosting, zaycv/Ddoy233 accounts, NovaStealer |
 
 ## Related Security Tools
 
