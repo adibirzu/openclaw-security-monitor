@@ -35,11 +35,11 @@ result_warn() { log "WARNING: $1"; WARNINGS=$((WARNINGS + 1)); }
 result_critical() { log "CRITICAL: $1"; CRITICAL=$((CRITICAL + 1)); }
 
 # Count total checks
-TOTAL_CHECKS=24
+TOTAL_CHECKS=32
 
 log "========================================"
 log "OPENCLAW SECURITY SCAN - $TIMESTAMP"
-log "Scanner: v2.0 (openclaw-security-monitor)"
+log "Scanner: v2.2 (openclaw-security-monitor)"
 log "========================================"
 
 # Load IOC data
@@ -635,6 +635,240 @@ if command -v openclaw &>/dev/null; then
 fi
 if [ "$LOG_ISSUES" -eq 0 ]; then
     result_clean "Log redaction settings acceptable"
+fi
+
+# ============================================================
+# CHECK 25: Reverse Proxy / Localhost Trust Bypass (NEW - Penligent/Vectra)
+# ============================================================
+header 25 "Checking for reverse proxy localhost trust bypass..."
+
+PROXY_ISSUES=0
+if command -v openclaw &>/dev/null; then
+    # Check if bound to LAN with no trusted proxy configuration
+    BIND_ADDR=$(timeout 10 openclaw config get "gateway.bind" 2>/dev/null || echo "")
+    TRUSTED_PROXIES=$(timeout 10 openclaw config get "gateway.trustedProxies" 2>/dev/null || echo "")
+    DISABLE_DEVICE_AUTH=$(timeout 10 openclaw config get "gateway.dangerouslyDisableDeviceAuth" 2>/dev/null || echo "")
+
+    if [ "$DISABLE_DEVICE_AUTH" = "true" ]; then
+        result_critical "Device authentication is disabled (dangerouslyDisableDeviceAuth=true)"
+        PROXY_ISSUES=$((PROXY_ISSUES + 1))
+    fi
+
+    if [ "$BIND_ADDR" = "lan" ] || [ "$BIND_ADDR" = "0.0.0.0" ]; then
+        if [ -z "$TRUSTED_PROXIES" ] || [ "$TRUSTED_PROXIES" = "null" ] || [ "$TRUSTED_PROXIES" = "[]" ]; then
+            result_warn "Gateway on LAN without trustedProxies - localhost trust bypass risk"
+            PROXY_ISSUES=$((PROXY_ISSUES + 1))
+        fi
+    fi
+fi
+if [ "$PROXY_ISSUES" -eq 0 ]; then
+    result_clean "No reverse proxy bypass risk"
+fi
+
+# ============================================================
+# CHECK 26: Exec-Approvals Configuration (NEW - CVE-2026-25253)
+# ============================================================
+header 26 "Auditing exec-approvals configuration..."
+
+EXEC_ISSUES=0
+EXEC_FILE="$OPENCLAW_DIR/exec-approvals.json"
+if [ -f "$EXEC_FILE" ]; then
+    # Check for overly permissive exec approvals
+    UNSAFE_EXEC=$(grep -iE '"security"\s*:\s*"allow"|"ask"\s*:\s*"off"|"allowlist"\s*:\s*\[\s*\]' "$EXEC_FILE" 2>/dev/null || true)
+    if [ -n "$UNSAFE_EXEC" ]; then
+        result_critical "Exec-approvals has unsafe configuration (allows remote exec):"
+        log "  $UNSAFE_EXEC"
+        EXEC_ISSUES=$((EXEC_ISSUES + 1))
+    fi
+    # Check file permissions
+    EXEC_PERMS=$(stat -f "%Lp" "$EXEC_FILE" 2>/dev/null || stat -c "%a" "$EXEC_FILE" 2>/dev/null)
+    if [ "$EXEC_PERMS" != "600" ]; then
+        result_warn "exec-approvals.json has permissions $EXEC_PERMS (should be 600)"
+        EXEC_ISSUES=$((EXEC_ISSUES + 1))
+    fi
+fi
+if [ "$EXEC_ISSUES" -eq 0 ]; then
+    result_clean "Exec-approvals configuration acceptable"
+fi
+
+# ============================================================
+# CHECK 27: Docker Container Security (NEW - ToxSec/DefectDojo)
+# ============================================================
+header 27 "Auditing Docker container security..."
+
+DOCKER_ISSUES=0
+if command -v docker &>/dev/null; then
+    # Check for running openclaw containers
+    OC_CONTAINERS=$(docker ps --format '{{.Names}} {{.Image}}' 2>/dev/null | grep -iE "openclaw|clawdbot|moltbot" || true)
+    if [ -n "$OC_CONTAINERS" ]; then
+        while IFS= read -r container_line; do
+            CNAME=$(echo "$container_line" | awk '{print $1}')
+            # Check if running as root
+            CUSER=$(docker inspect --format '{{.Config.User}}' "$CNAME" 2>/dev/null || echo "")
+            if [ -z "$CUSER" ] || [ "$CUSER" = "root" ] || [ "$CUSER" = "0" ]; then
+                result_warn "Container '$CNAME' running as root (use non-root user)"
+                DOCKER_ISSUES=$((DOCKER_ISSUES + 1))
+            fi
+            # Check for Docker socket mount
+            DSOCK=$(docker inspect --format '{{range .Mounts}}{{.Source}} {{end}}' "$CNAME" 2>/dev/null | grep "docker.sock" || true)
+            if [ -n "$DSOCK" ]; then
+                result_critical "Container '$CNAME' has Docker socket mounted (container escape risk)"
+                DOCKER_ISSUES=$((DOCKER_ISSUES + 1))
+            fi
+            # Check for privileged mode
+            PRIV=$(docker inspect --format '{{.HostConfig.Privileged}}' "$CNAME" 2>/dev/null || echo "")
+            if [ "$PRIV" = "true" ]; then
+                result_critical "Container '$CNAME' is running in privileged mode"
+                DOCKER_ISSUES=$((DOCKER_ISSUES + 1))
+            fi
+        done <<< "$OC_CONTAINERS"
+    else
+        log "  No OpenClaw Docker containers detected"
+    fi
+fi
+if [ "$DOCKER_ISSUES" -eq 0 ]; then
+    result_clean "Docker security acceptable"
+fi
+
+# ============================================================
+# CHECK 28: Node.js Version / CVE-2026-21636 (NEW - Argus)
+# ============================================================
+header 28 "Checking Node.js version for known CVEs..."
+
+NODE_ISSUES=0
+if command -v node &>/dev/null; then
+    NODE_VER=$(node --version 2>/dev/null | sed 's/v//')
+    NODE_MAJOR=$(echo "$NODE_VER" | cut -d. -f1)
+    NODE_MINOR=$(echo "$NODE_VER" | cut -d. -f2)
+    NODE_PATCH=$(echo "$NODE_VER" | cut -d. -f3)
+    log "  Node.js version: v$NODE_VER"
+
+    # CVE-2026-21636: Permission model bypass (fixed in 22.12.0)
+    if [ "$NODE_MAJOR" -eq 22 ] && [ "$NODE_MINOR" -lt 12 ]; then
+        result_warn "Node.js v$NODE_VER is vulnerable to CVE-2026-21636 (permission model bypass). Upgrade to 22.12.0+"
+        NODE_ISSUES=$((NODE_ISSUES + 1))
+    elif [ "$NODE_MAJOR" -lt 22 ]; then
+        result_warn "Node.js v$NODE_VER is below recommended v22 LTS"
+        NODE_ISSUES=$((NODE_ISSUES + 1))
+    fi
+else
+    log "  Node.js not found"
+fi
+if [ "$NODE_ISSUES" -eq 0 ]; then
+    result_clean "Node.js version acceptable"
+fi
+
+# ============================================================
+# CHECK 29: Plaintext Credential Detection (NEW - Argus/Vectra)
+# ============================================================
+header 29 "Scanning for plaintext credentials in config files..."
+
+PLAINTEXT_ISSUES=0
+# Scan openclaw config and credential files for API key patterns
+CRED_PATTERNS="sk-[a-zA-Z0-9]{20,}|AKIA[0-9A-Z]{16}|ghp_[a-zA-Z0-9]{36}|gho_[a-zA-Z0-9]{36}|xoxb-[0-9]{10,}|xoxp-[0-9]{10,}|glpat-[a-zA-Z0-9_-]{20}"
+for cfile in "$OPENCLAW_DIR/openclaw.json" \
+             "$OPENCLAW_DIR/agents/main/agent/auth-profiles.json"; do
+    if [ -f "$cfile" ]; then
+        CRED_FOUND=$(grep -oE "$CRED_PATTERNS" "$cfile" 2>/dev/null | head -5 || true)
+        if [ -n "$CRED_FOUND" ]; then
+            result_warn "Plaintext credentials found in $(basename "$cfile") (consider using a secrets manager)"
+            PLAINTEXT_ISSUES=$((PLAINTEXT_ISSUES + 1))
+        fi
+    fi
+done
+# Check credential JSON files
+if [ -d "$OPENCLAW_DIR/credentials" ]; then
+    CRED_FILES=$(find "$OPENCLAW_DIR/credentials" -name "*.json" -exec grep -lE "$CRED_PATTERNS" {} \; 2>/dev/null || true)
+    if [ -n "$CRED_FILES" ]; then
+        result_warn "Plaintext API keys in credentials directory"
+        PLAINTEXT_ISSUES=$((PLAINTEXT_ISSUES + 1))
+    fi
+fi
+if [ "$PLAINTEXT_ISSUES" -eq 0 ]; then
+    result_clean "No exposed plaintext credentials"
+fi
+
+# ============================================================
+# CHECK 30: VS Code Extension Trojan Detection (NEW - Aikido/JFrog)
+# ============================================================
+header 30 "Checking for fake ClawdBot/OpenClaw VS Code extensions..."
+
+VSCODE_ISSUES=0
+VSCODE_EXT_DIR="$HOME/.vscode/extensions"
+if [ -d "$VSCODE_EXT_DIR" ]; then
+    FAKE_EXT=$(find "$VSCODE_EXT_DIR" -maxdepth 1 -type d -iname "*clawdbot*" -o -iname "*moltbot*" -o -iname "*openclaw*" 2>/dev/null || true)
+    if [ -n "$FAKE_EXT" ]; then
+        result_critical "Suspicious VS Code extension found (OpenClaw has NO official VS Code extension):"
+        log "  $FAKE_EXT"
+        VSCODE_ISSUES=$((VSCODE_ISSUES + 1))
+    fi
+fi
+# Also check VS Code Insiders
+VSCODE_INS_DIR="$HOME/.vscode-insiders/extensions"
+if [ -d "$VSCODE_INS_DIR" ]; then
+    FAKE_INS=$(find "$VSCODE_INS_DIR" -maxdepth 1 -type d -iname "*clawdbot*" -o -iname "*moltbot*" -o -iname "*openclaw*" 2>/dev/null || true)
+    if [ -n "$FAKE_INS" ]; then
+        result_critical "Suspicious VS Code Insiders extension found:"
+        log "  $FAKE_INS"
+        VSCODE_ISSUES=$((VSCODE_ISSUES + 1))
+    fi
+fi
+if [ "$VSCODE_ISSUES" -eq 0 ]; then
+    result_clean "No fake VS Code extensions"
+fi
+
+# ============================================================
+# CHECK 31: Internet Exposure Detection (NEW - Brandefense/Shodan)
+# ============================================================
+header 31 "Checking for internet exposure of gateway..."
+
+EXPOSURE_ISSUES=0
+# Check if gateway is listening on non-loopback
+GW_LISTEN=$(lsof -i ":${GW_PORT}" -nP 2>/dev/null | grep LISTEN | awk '{print $9}' | head -5 || true)
+if [ -n "$GW_LISTEN" ]; then
+    NON_LOCAL=$(echo "$GW_LISTEN" | grep -vE "127\.0\.0\.1|localhost|\[::1\]|\*:" || true)
+    if [ -n "$NON_LOCAL" ]; then
+        result_warn "Gateway listening on non-loopback interface:"
+        log "  $GW_LISTEN"
+        EXPOSURE_ISSUES=$((EXPOSURE_ISSUES + 1))
+    fi
+    # Check for wildcard binding
+    WILDCARD=$(echo "$GW_LISTEN" | grep "\*:" || true)
+    if [ -n "$WILDCARD" ]; then
+        result_warn "Gateway bound to all interfaces (*:$GW_PORT) - potentially internet-exposed"
+        EXPOSURE_ISSUES=$((EXPOSURE_ISSUES + 1))
+    fi
+fi
+if [ "$EXPOSURE_ISSUES" -eq 0 ]; then
+    result_clean "Gateway not exposed to external network"
+fi
+
+# ============================================================
+# CHECK 32: MCP Server Security (NEW - ToxSec/Prompt Security)
+# ============================================================
+header 32 "Auditing MCP server configuration..."
+
+MCP_ISSUES=0
+if command -v openclaw &>/dev/null; then
+    # Check if all project MCP servers are enabled (should use allowlist)
+    MCP_ALL=$(timeout 10 openclaw config get "mcp.enableAllProjectMcpServers" 2>/dev/null || echo "")
+    if [ "$MCP_ALL" = "true" ]; then
+        result_warn "All project MCP servers enabled (use explicit allowlist instead)"
+        MCP_ISSUES=$((MCP_ISSUES + 1))
+    fi
+fi
+# Scan MCP config for suspicious tool descriptions (prompt injection in tool docstrings)
+MCP_CONFIG="$OPENCLAW_DIR/mcp.json"
+if [ -f "$MCP_CONFIG" ]; then
+    MCP_INJECT=$(grep -iE "ignore previous|system prompt|override instruction|execute command|run this" "$MCP_CONFIG" 2>/dev/null || true)
+    if [ -n "$MCP_INJECT" ]; then
+        result_critical "Prompt injection patterns in MCP server config:"
+        log "  $MCP_INJECT"
+        MCP_ISSUES=$((MCP_ISSUES + 1))
+    fi
+fi
+if [ "$MCP_ISSUES" -eq 0 ]; then
+    result_clean "MCP server configuration acceptable"
 fi
 
 # ============================================================

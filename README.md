@@ -12,7 +12,7 @@ This project provides defense-in-depth monitoring for self-hosted OpenClaw insta
 
 ## Features
 
-- **24-point security scan** covering C2 infrastructure, stealers, reverse shells, credential exfiltration, memory poisoning, SKILL.md injection, WebSocket hijacking, DM/tool/sandbox policies, persistence mechanisms, plugin auditing, and more
+- **32-point security scan** covering C2 infrastructure, stealers, reverse shells, credential exfiltration, memory poisoning, SKILL.md injection, WebSocket hijacking, DM/tool/sandbox policies, persistence mechanisms, plugin auditing, Docker security, MCP hardening, and more
 - **IOC database** with known C2 IPs, malicious domains, file hashes, publisher blacklists, and skill name patterns
 - **Auto-updating IOC feeds** that pull latest threat intelligence from upstream
 - **Web dashboard** (dark-themed, zero dependencies) with real-time status, process trees, network monitoring, and scan history
@@ -48,7 +48,7 @@ crontab -l | { cat; echo "0 6 * * * $(pwd)/scripts/daily-scan-cron.sh"; } | cron
 ```
 openclaw-security-monitor/
   scripts/
-    scan.sh              # 24-point threat scanner (v2.1)
+    scan.sh              # 32-point threat scanner (v2.2)
     dashboard.sh         # CLI security dashboard with witr
     network-check.sh     # Network activity monitor
     daily-scan-cron.sh   # Cron wrapper + Telegram alerts
@@ -67,7 +67,7 @@ openclaw-security-monitor/
     threat-model.md      # Threat model and attack vectors
 ```
 
-## Scan Checks (24)
+## Scan Checks (32)
 
 | # | Check | Severity | Detects |
 |---|-------|----------|---------|
@@ -95,6 +95,773 @@ openclaw-security-monitor/
 | 22 | Persistence Mechanisms | WARNING | Unauthorized LaunchAgents, crontabs, systemd services |
 | 23 | Plugin/Extension Audit | CRITICAL | Extensions with exec patterns or malicious domains |
 | 24 | Log Redaction Audit | WARNING | Log redaction disabled, world-readable log directories |
+| 25 | Reverse Proxy Bypass | CRITICAL | Localhost trust bypass via misconfigured reverse proxy |
+| 26 | Exec-Approvals Audit | CRITICAL | Unsafe remote exec approvals, missing approval prompts |
+| 27 | Docker Security | CRITICAL | Root containers, Docker socket mount, privileged mode |
+| 28 | Node.js CVE Check | WARNING | CVE-2026-21636 permission model bypass (Node < 22.12) |
+| 29 | Plaintext Credentials | WARNING | Unencrypted API keys in config (sk-, AKIA, ghp_, xoxb-) |
+| 30 | VS Code Trojans | CRITICAL | Fake ClawdBot/OpenClaw VS Code extensions (Aikido/JFrog) |
+| 31 | Internet Exposure | WARNING | Gateway listening on non-loopback / wildcard interfaces |
+| 32 | MCP Server Security | CRITICAL | Unrestricted MCP servers, prompt injection in tool descriptions |
+
+## Remediation Guide
+
+Step-by-step hardening for each security check, covering both macOS and Linux.
+
+### Check 1: C2 Infrastructure — Known C2 IPs in skill code
+
+**Severity:** CRITICAL
+
+**What it means:** A skill contains IP addresses associated with known command-and-control servers (e.g., `91.92.242.30`). This strongly indicates the skill is malicious.
+
+**Remediation:**
+```bash
+# Identify the affected skill
+grep -rlE "91\.92\.242|95\.92\.242|54\.91\.154\.110" ~/.openclaw/workspace/skills/
+
+# Remove the malicious skill
+openclaw skill remove <skill-name>
+
+# Or manually delete it
+rm -rf ~/.openclaw/workspace/skills/<skill-name>
+
+# Verify removal
+grep -rlE "91\.92\.242" ~/.openclaw/workspace/skills/ # should return empty
+```
+
+### Check 2: AMOS Stealer / AuthTool Markers
+
+**Severity:** CRITICAL
+
+**What it means:** A skill contains patterns associated with the Atomic Stealer (AMOS) macOS infostealer, NovaStealer, or the "AuthTool" social engineering binary.
+
+**Remediation:**
+```bash
+# Remove the malicious skill immediately
+openclaw skill remove <skill-name>
+
+# Check if AMOS was executed (macOS)
+# Look for suspicious LaunchAgents
+ls ~/Library/LaunchAgents/ | grep -ivE "com\.apple|com\.openclaw\.security"
+
+# Check for unexpected login items (macOS)
+osascript -e 'tell application "System Events" to get the name of every login item'
+
+# Check browser extensions were not tampered with
+ls ~/Library/Application\ Support/Google/Chrome/Default/Extensions/
+
+# If AMOS was executed: rotate ALL credentials (SSH, AWS, crypto wallets, browser passwords)
+```
+
+### Check 3: Reverse Shells & Backdoors
+
+**Severity:** CRITICAL
+
+**What it means:** A skill contains reverse shell patterns (`nc -e`, `/dev/tcp/`, `socat exec`, etc.) or Gatekeeper bypass commands (`xattr -cr`).
+
+**Remediation:**
+```bash
+# Remove the skill
+openclaw skill remove <skill-name>
+
+# Check for active reverse shells (macOS/Linux)
+lsof -i -nP | grep -E "ESTABLISHED|SYN_SENT" | grep -vE ":443 |:80 |:53 "
+
+# Kill any suspicious connections
+kill -9 <PID>
+
+# Re-enable Gatekeeper if bypassed (macOS)
+sudo spctl --master-enable
+sudo defaults write com.apple.LaunchServices LSQuarantine -bool true
+
+# Check for quarantine removals (macOS)
+xattr -l /Applications/*.app | grep quarantine
+```
+
+### Check 4: Credential Exfiltration Endpoints
+
+**Severity:** CRITICAL
+
+**What it means:** A skill sends data to known exfiltration services (webhook.site, pipedream.net, ngrok.io, etc.).
+
+**Remediation:**
+```bash
+# Remove the skill
+openclaw skill remove <skill-name>
+
+# Block exfiltration domains at the host level
+# macOS/Linux:
+sudo sh -c 'echo "127.0.0.1 webhook.site" >> /etc/hosts'
+sudo sh -c 'echo "127.0.0.1 pipedream.net" >> /etc/hosts'
+sudo sh -c 'echo "127.0.0.1 hookbin.com" >> /etc/hosts'
+sudo sh -c 'echo "127.0.0.1 requestbin.com" >> /etc/hosts'
+
+# Flush DNS cache (macOS)
+sudo dscacheutil -flushcache && sudo killall -HUP mDNSResponder
+# Flush DNS cache (Linux)
+sudo systemd-resolve --flush-caches
+```
+
+### Check 5: Crypto Wallet Targeting
+
+**Severity:** WARNING
+
+**What it means:** A skill references crypto wallet private keys, seed phrases, or exchange API keys.
+
+**Remediation:**
+```bash
+# Remove the skill
+openclaw skill remove <skill-name>
+
+# Move crypto wallets to hardware wallets (Ledger, Trezor)
+# Rotate exchange API keys immediately
+
+# Restrict filesystem access (macOS)
+chmod 700 ~/Library/Application\ Support/Phantom
+chmod 700 ~/Library/Application\ Support/MetaMask
+
+# Check if wallet files were accessed recently
+# macOS:
+mdls -name kMDItemLastUsedDate ~/Library/Application\ Support/Phantom/*
+# Linux:
+stat -c "%x" ~/.config/phantom/*
+```
+
+### Check 6: Curl-Pipe Attacks
+
+**Severity:** WARNING
+
+**What it means:** A skill uses `curl | sh` or `wget | bash` patterns to download and execute remote scripts.
+
+**Remediation:**
+```bash
+# Remove the skill
+openclaw skill remove <skill-name>
+
+# Review and restrict agent tool access
+openclaw config set tools.deny '["exec","process"]'
+
+# Block curl-pipe at the shell level (add to ~/.bashrc or ~/.zshrc)
+# This creates an alias that warns on pipe-to-shell patterns:
+alias curl='() { if [[ "$*" == *"|"*"sh"* ]] || [[ "$*" == *"|"*"bash"* ]]; then echo "BLOCKED: curl-pipe detected"; return 1; fi; command curl "$@"; }'
+```
+
+### Check 7: File Permission Audit
+
+**Severity:** WARNING
+
+**What it means:** Sensitive configuration files (openclaw.json, auth-profiles.json) are readable by other users.
+
+**Remediation:**
+```bash
+# Fix permissions (macOS/Linux)
+chmod 600 ~/.openclaw/openclaw.json
+chmod 600 ~/.openclaw/agents/main/agent/auth-profiles.json
+chmod 600 ~/.openclaw/exec-approvals.json
+chmod 700 ~/.openclaw
+
+# Set default umask in shell profile (add to ~/.bashrc or ~/.zshrc)
+echo 'umask 077' >> ~/.zshrc
+```
+
+### Check 8: Skill Integrity Hashes
+
+**Severity:** WARNING
+
+**What it means:** SKILL.md files have been modified since the last scan, which could indicate tampering or supply chain compromise.
+
+**Remediation:**
+```bash
+# Review what changed
+diff ~/.openclaw/logs/skill-hashes.sha256.prev ~/.openclaw/logs/skill-hashes.sha256
+
+# For each changed skill, inspect the diff
+cd ~/.openclaw/workspace/skills/<skill-name>
+git diff HEAD~1 SKILL.md   # If under version control
+
+# If change is unexpected, reinstall from ClawHub
+openclaw skill remove <skill-name>
+openclaw skill install <skill-name>
+
+# Enable skill pinning (if supported)
+openclaw config set skills.autoUpdate false
+```
+
+### Check 9: SKILL.md Shell Injection
+
+**Severity:** WARNING
+
+**What it means:** A SKILL.md contains suspicious install instructions that try to get the user or agent to run shell commands (Snyk CVE-2026-22708).
+
+**Remediation:**
+```bash
+# Review the suspicious SKILL.md
+cat ~/.openclaw/workspace/skills/<skill-name>/SKILL.md | grep -iE "terminal|curl|wget|install|download"
+
+# Remove the skill if instructions are clearly malicious
+openclaw skill remove <skill-name>
+
+# Never run commands from SKILL.md Prerequisites without reviewing them first
+# Configure agent to not auto-execute installation commands
+openclaw config set tools.deny '["exec"]'
+```
+
+### Check 10: Memory Poisoning
+
+**Severity:** CRITICAL
+
+**What it means:** SOUL.md, MEMORY.md, or IDENTITY.md contain prompt injection patterns ("ignore previous instructions", "you are now", etc.).
+
+**Remediation:**
+```bash
+# Review poisoned files
+cat ~/.openclaw/workspace/SOUL.md
+cat ~/.openclaw/workspace/MEMORY.md
+cat ~/.openclaw/workspace/IDENTITY.md
+
+# Remove injected content manually (edit the file, remove injected lines)
+# Or restore from backup:
+git checkout HEAD -- ~/.openclaw/workspace/SOUL.md
+
+# Protect memory files from modification
+chmod 444 ~/.openclaw/workspace/SOUL.md
+chmod 444 ~/.openclaw/workspace/MEMORY.md
+chmod 444 ~/.openclaw/workspace/IDENTITY.md
+
+# Investigate which skill wrote to memory
+grep -rl "SOUL\.md\|MEMORY\.md" ~/.openclaw/workspace/skills/
+```
+
+### Check 11: Base64 Obfuscation
+
+**Severity:** WARNING
+
+**What it means:** A skill uses base64 encoding/decoding, which is a common technique to hide malicious payloads (as seen in the ClawHavoc campaign via glot.io).
+
+**Remediation:**
+```bash
+# Review the base64 content
+grep -rn "base64" ~/.openclaw/workspace/skills/<skill-name>/
+
+# Decode and inspect the payload
+echo "<base64-string>" | base64 -d
+
+# Remove if malicious
+openclaw skill remove <skill-name>
+
+# Monitor for base64 activity in agent logs
+grep -i "base64" ~/.openclaw/logs/*.log
+```
+
+### Check 12: External Binary Downloads
+
+**Severity:** WARNING
+
+**What it means:** A skill references downloadable binaries (.exe, .dmg, .pkg, .zip with password) or known malicious download URLs.
+
+**Remediation:**
+```bash
+# Remove the skill
+openclaw skill remove <skill-name>
+
+# Check Downloads folder for suspicious binaries (macOS)
+ls -la ~/Downloads/*.{exe,dmg,pkg,zip,msi} 2>/dev/null
+
+# Verify Gatekeeper is active (macOS)
+spctl --status  # should say "assessments enabled"
+
+# Check if any unsigned apps were installed (macOS)
+sudo find /Applications -name "*.app" -exec codesign -v {} \; 2>&1 | grep "invalid"
+
+# Linux: check /tmp and /var/tmp for suspicious downloads
+find /tmp /var/tmp -name "*.sh" -o -name "*.elf" -o -name "*.bin" -mtime -7 2>/dev/null
+```
+
+### Check 13: Gateway Security Configuration
+
+**Severity:** CRITICAL
+
+**What it means:** The OpenClaw gateway is bound to LAN (accessible from network) or has authentication disabled.
+
+**Remediation:**
+```bash
+# Bind gateway to localhost only
+openclaw config set gateway.bind localhost
+
+# Enable authentication
+openclaw config set gateway.auth.mode token
+# Or use OIDC (enterprise)
+openclaw config set gateway.auth.mode oidc
+
+# Verify configuration
+openclaw config get gateway.bind
+openclaw config get gateway.auth.mode
+
+# Check what's actually listening
+lsof -i :18789 -nP   # Should show 127.0.0.1, not 0.0.0.0
+
+# Update to latest version to patch CVE-2026-25253
+openclaw update
+```
+
+### Check 14: WebSocket Security (CVE-2026-25253)
+
+**Severity:** CRITICAL
+
+**What it means:** The gateway WebSocket accepts connections from arbitrary origins, enabling 1-click RCE via a malicious webpage.
+
+**Remediation:**
+```bash
+# Update OpenClaw to latest version (patch included in 2026.2.3+)
+openclaw update
+
+# Verify the fix
+curl -s -o /dev/null -w "%{http_code}" \
+  -H "Connection: Upgrade" -H "Upgrade: websocket" \
+  -H "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==" \
+  -H "Sec-WebSocket-Version: 13" \
+  -H "Origin: http://evil.attacker.com" \
+  http://127.0.0.1:18789/
+# Should return 403 or 401, NOT 101
+
+# If update is not available, restrict gateway to localhost
+openclaw config set gateway.bind localhost
+
+# Add firewall rule (macOS)
+sudo /usr/libexec/ApplicationFirewall/socketfilterfw --add /usr/local/bin/node
+# Linux (iptables)
+sudo iptables -A INPUT -p tcp --dport 18789 -s 127.0.0.1 -j ACCEPT
+sudo iptables -A INPUT -p tcp --dport 18789 -j DROP
+```
+
+### Check 15: Malicious Publisher Detection
+
+**Severity:** CRITICAL
+
+**What it means:** An installed skill references a known malicious ClawHub publisher (hightower6eu, zaycv, Ddoy233, etc.).
+
+**Remediation:**
+```bash
+# Remove all skills from the malicious publisher
+openclaw skill remove <skill-name>
+
+# Check for other skills from the same publisher
+grep -rl "<publisher-name>" ~/.openclaw/workspace/skills/
+
+# Review recently installed skills
+ls -lt ~/.openclaw/workspace/skills/ | head -20
+
+# Only install skills from verified publishers
+# Check skill reputation before installing:
+# https://www.koi.ai (Clawdex reputation checker)
+```
+
+### Check 16: Sensitive Environment Leakage
+
+**Severity:** WARNING / CRITICAL (if hardcoded API keys found)
+
+**What it means:** A skill reads sensitive files (.env, .ssh, .aws/credentials) or contains hardcoded API keys / Moltbook tokens.
+
+**Remediation:**
+```bash
+# Remove the skill
+openclaw skill remove <skill-name>
+
+# Rotate exposed credentials immediately
+# OpenAI:
+# Go to https://platform.openai.com/api-keys and regenerate
+# Anthropic:
+# Go to https://console.anthropic.com/settings/keys and regenerate
+
+# Move secrets to a secrets manager instead of .env files
+# macOS: Use Keychain Access
+security add-generic-password -a "$USER" -s "OPENAI_API_KEY" -w "<new-key>"
+
+# Linux: Use pass or secret-tool
+secret-tool store --label="OPENAI_API_KEY" service openai key api
+
+# Restrict skill filesystem access
+openclaw config set sandbox.mode all
+```
+
+### Check 17: DM Policy Audit
+
+**Severity:** WARNING
+
+**What it means:** A messaging channel has `dmPolicy=open`, allowing anyone to message your agent — enabling social engineering and prompt injection from untrusted sources.
+
+**Remediation:**
+```bash
+# Set DM policy to restricted for each channel
+openclaw config set channels.whatsapp.dmPolicy restricted
+openclaw config set channels.telegram.dmPolicy restricted
+openclaw config set channels.discord.dmPolicy restricted
+
+# Set explicit allowFrom list
+openclaw config set channels.telegram.allowFrom '["your-user-id"]'
+
+# Disable unused channels entirely
+openclaw config set channels.signal.enabled false
+```
+
+### Check 18: Tool Policy / Elevated Tools Audit
+
+**Severity:** CRITICAL
+
+**What it means:** Elevated tools are enabled with wildcard access, or the tool deny list is empty — allowing the agent to execute arbitrary commands.
+
+**Remediation:**
+```bash
+# Restrict elevated tools to specific principals
+openclaw config set tools.elevated.allowFrom '["your-user-id"]'
+
+# Add dangerous tools to the deny list
+openclaw config set tools.deny '["exec","process","browser","filesystem-write"]'
+
+# Require approval for elevated actions
+openclaw config set tools.elevated.requireApproval true
+
+# Review current tool permissions
+openclaw config get tools
+```
+
+### Check 19: Sandbox Configuration
+
+**Severity:** WARNING
+
+**What it means:** Sandboxing is disabled, allowing skills to access the full filesystem and network without restriction.
+
+**Remediation:**
+```bash
+# Enable sandboxing
+openclaw config set sandbox.mode all
+
+# Restrict workspace access to read-only where possible
+openclaw config set sandbox.workspaceAccess ro
+
+# For Docker deployments (recommended for production):
+# Use gVisor runtime for stronger isolation
+docker run --runtime=runsc --read-only \
+  -v ~/.openclaw:/home/openclaw/.openclaw:ro \
+  openclaw/gateway
+```
+
+### Check 20: mDNS/Bonjour Exposure
+
+**Severity:** WARNING
+
+**What it means:** mDNS is broadcasting in "full" mode, advertising the gateway's presence, paths, and SSH port to the local network.
+
+**Remediation:**
+```bash
+# Disable mDNS broadcasting
+openclaw config set discovery.mdns.mode off
+
+# Or set to minimal (name only, no paths)
+openclaw config set discovery.mdns.mode minimal
+
+# Verify mDNS is not broadcasting (macOS)
+dns-sd -B _openclaw._tcp local
+# Should return no results
+
+# Disable Bonjour for the gateway specifically (macOS)
+sudo defaults write /Library/Preferences/com.apple.mDNSResponder.plist NoMulticastAdvertisements -bool YES
+```
+
+### Check 21: Session & Credential Permissions
+
+**Severity:** WARNING
+
+**What it means:** Credential directories, session files, or the OpenClaw home directory have overly permissive permissions.
+
+**Remediation:**
+```bash
+# Fix all permissions at once
+chmod 700 ~/.openclaw
+chmod 700 ~/.openclaw/credentials 2>/dev/null
+chmod 700 ~/.openclaw/agents/*/sessions 2>/dev/null
+find ~/.openclaw/credentials -type f -name "*.json" -exec chmod 600 {} \; 2>/dev/null
+find ~/.openclaw -name "auth-profiles.json" -exec chmod 600 {} \;
+
+# Verify
+ls -la ~/.openclaw/
+ls -la ~/.openclaw/credentials/
+```
+
+### Check 22: Persistence Mechanisms
+
+**Severity:** WARNING
+
+**What it means:** There are LaunchAgents, cron entries, or systemd services referencing OpenClaw that are not the known security monitor.
+
+**Remediation:**
+```bash
+# macOS: Review LaunchAgents
+ls -la ~/Library/LaunchAgents/ | grep -iE "openclaw|clawdbot|moltbot"
+# Remove unauthorized agents:
+launchctl unload ~/Library/LaunchAgents/<suspicious-plist>
+rm ~/Library/LaunchAgents/<suspicious-plist>
+
+# Check system-level LaunchDaemons (requires root)
+sudo ls /Library/LaunchDaemons/ | grep -iE "openclaw|clawdbot"
+
+# Linux: Review systemd services
+systemctl --user list-units --type=service | grep -iE "openclaw|clawdbot"
+# Disable unauthorized services:
+systemctl --user disable --now <service-name>
+
+# Review crontab
+crontab -l | grep -iE "openclaw|clawdbot|moltbot"
+# Edit and remove suspicious entries:
+crontab -e
+```
+
+### Check 23: Plugin/Extension Security
+
+**Severity:** CRITICAL
+
+**What it means:** An installed extension contains code execution patterns (`eval()`, `exec()`, `child_process`) or references known malicious domains.
+
+**Remediation:**
+```bash
+# List installed extensions
+ls ~/.openclaw/extensions/
+
+# Review suspicious extension code
+grep -rn "eval\|exec\|child_process\|fetch(" ~/.openclaw/extensions/<ext-name>/
+
+# Remove the extension
+rm -rf ~/.openclaw/extensions/<ext-name>
+
+# Disable extension loading if not needed
+openclaw config set extensions.enabled false
+
+# Only install extensions from verified sources
+```
+
+### Check 24: Log Redaction Audit
+
+**Severity:** WARNING
+
+**What it means:** Log redaction is disabled (sensitive data like API keys and passwords may appear in plaintext in logs), or log directories are world-readable.
+
+**Remediation:**
+```bash
+# Enable log redaction
+openclaw config set logging.redactSensitive true
+
+# Fix log directory permissions
+chmod 700 ~/.openclaw/logs
+chmod 700 /tmp/openclaw 2>/dev/null
+
+# Verify logs don't contain sensitive data
+grep -iE "sk-[a-zA-Z0-9]{10}|password|token.*=" ~/.openclaw/logs/*.log
+
+# Set up log rotation (macOS - newsyslog)
+sudo sh -c 'echo "$HOME/.openclaw/logs/*.log 640 7 1000 * J" >> /etc/newsyslog.conf'
+# Linux - logrotate
+cat > /etc/logrotate.d/openclaw << 'LOGROTATE'
+/home/*/.openclaw/logs/*.log {
+    weekly
+    rotate 4
+    compress
+    missingok
+    notifempty
+    create 0600 root root
+}
+LOGROTATE
+```
+
+### Check 25: Reverse Proxy Localhost Trust Bypass
+
+**Severity:** CRITICAL
+
+**What it means:** The gateway is bound to LAN without `trustedProxies` configured, or `dangerouslyDisableDeviceAuth` is enabled. External attackers can bypass authentication by appearing as localhost through a reverse proxy (28% of exposed instances had this flaw per Penligent).
+
+**Remediation:**
+```bash
+# Configure trusted proxies
+openclaw config set gateway.trustedProxies '["192.168.1.1"]'
+
+# Never disable device auth
+openclaw config set gateway.dangerouslyDisableDeviceAuth false
+
+# If using Nginx, ensure X-Forwarded-For is properly set
+# In nginx.conf:
+# proxy_set_header X-Real-IP $remote_addr;
+# proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+
+# Verify
+openclaw config get gateway.trustedProxies
+```
+
+### Check 26: Exec-Approvals Configuration
+
+**Severity:** CRITICAL
+
+**What it means:** The `exec-approvals.json` allows remote command execution without confirmation. The CVE-2026-25253 exploit chain used `exec.approvals.set` to disable confirmation prompts.
+
+**Remediation:**
+```bash
+# Set exec approvals to deny for non-owner nodes
+# Edit ~/.openclaw/exec-approvals.json manually:
+# Set "security": "deny" for all non-owner nodes
+# Set "ask": "always"
+
+# Fix permissions
+chmod 600 ~/.openclaw/exec-approvals.json
+
+# Verify
+cat ~/.openclaw/exec-approvals.json | python3 -m json.tool
+```
+
+### Check 27: Docker Container Security
+
+**Severity:** CRITICAL
+
+**What it means:** OpenClaw Docker containers are running as root, with Docker socket mounted, or in privileged mode. CVE-2026-24763 was a command injection in the Docker sandbox.
+
+**Remediation:**
+```bash
+# Run OpenClaw container with hardened settings
+docker run -d \
+  --name openclaw \
+  --user 1000:1000 \
+  --cap-drop ALL \
+  --no-new-privileges \
+  --read-only \
+  --tmpfs /tmp:noexec,nosuid,size=100m \
+  --memory 512m \
+  --cpus 1.0 \
+  --pids-limit 100 \
+  -v ~/.openclaw:/home/openclaw/.openclaw:rw \
+  openclaw/gateway
+
+# NEVER mount Docker socket
+# BAD: -v /var/run/docker.sock:/var/run/docker.sock
+
+# Use gVisor for stronger isolation
+docker run --runtime=runsc ...
+```
+
+### Check 28: Node.js Version / CVE-2026-21636
+
+**Severity:** WARNING
+
+**What it means:** Node.js version is below 22.12.0 and vulnerable to CVE-2026-21636 (permission model bypass via Unix Domain Sockets), which allows sandbox escape.
+
+**Remediation:**
+```bash
+# macOS
+brew install node@22
+# Or update existing
+brew upgrade node
+
+# Linux (NodeSource)
+curl -fsSL https://deb.nodesource.com/setup_22.x | sudo bash -
+sudo apt-get install -y nodejs
+
+# Verify
+node --version  # Should be >= v22.12.0
+```
+
+### Check 29: Plaintext Credential Detection
+
+**Severity:** WARNING
+
+**What it means:** OpenClaw config or credential files contain plaintext API keys (OpenAI `sk-`, AWS `AKIA`, GitHub `ghp_`, Slack `xoxb-`). The `~/.openclaw` directory is a standard target for infostealers.
+
+**Remediation:**
+```bash
+# macOS: Move secrets to Keychain
+security add-generic-password -a "$USER" -s "OPENAI_API_KEY" -w "<key>"
+
+# Linux: Use pass or secret-tool
+pass insert openai/api-key
+# Or
+secret-tool store --label="OPENAI_API_KEY" service openai key api
+
+# Use environment variables instead of config files
+export OPENAI_API_KEY=$(security find-generic-password -s "OPENAI_API_KEY" -w)
+
+# Set up detect-secrets baseline
+pip install detect-secrets
+detect-secrets scan ~/.openclaw/ > .secrets.baseline
+```
+
+### Check 30: VS Code Extension Trojan Detection
+
+**Severity:** CRITICAL
+
+**What it means:** Fake "ClawdBot Agent" VS Code extensions have been discovered that install ScreenConnect RAT and remote access trojans. OpenClaw has NO official VS Code extension.
+
+**Remediation:**
+```bash
+# Remove any clawdbot/openclaw VS Code extensions immediately
+rm -rf ~/.vscode/extensions/*clawdbot*
+rm -rf ~/.vscode/extensions/*openclaw*
+rm -rf ~/.vscode/extensions/*moltbot*
+
+# Check for ScreenConnect/ConnectWise artifacts
+# macOS:
+find /Applications -name "*ScreenConnect*" -o -name "*ConnectWise*"
+# Linux:
+find /opt -name "*screenconnect*" -o -name "*connectwise*"
+
+# Scan for persistence left by the trojan
+ls ~/Library/LaunchAgents/ | grep -ivE "com\.apple"
+```
+
+### Check 31: Internet Exposure Detection
+
+**Severity:** WARNING
+
+**What it means:** The gateway is listening on non-loopback interfaces, potentially exposing it to the internet. Over 21,000 OpenClaw instances were found on Shodan with zero authentication.
+
+**Remediation:**
+```bash
+# Bind to localhost only
+openclaw config set gateway.bind localhost
+
+# Verify
+lsof -i :18789 -nP | grep LISTEN
+# Should show 127.0.0.1:18789, NOT *:18789 or 0.0.0.0:18789
+
+# Add firewall rules (macOS pf)
+echo "block in on ! lo0 proto tcp to any port 18789" | sudo pfctl -ef -
+
+# Linux (iptables)
+sudo iptables -A INPUT -p tcp --dport 18789 ! -s 127.0.0.1 -j DROP
+
+# Change default port (reduce scan surface)
+openclaw config set gateway.port 28789
+```
+
+### Check 32: MCP Server Security
+
+**Severity:** CRITICAL
+
+**What it means:** MCP servers are configured with unrestricted access (`enableAllProjectMcpServers=true`) or contain prompt injection patterns in tool descriptions — enabling tool poisoning and rug-pull attacks.
+
+**Remediation:**
+```bash
+# Use explicit MCP server allowlist
+openclaw config set mcp.enableAllProjectMcpServers false
+
+# Review each MCP server's tool descriptions
+cat ~/.openclaw/mcp.json | python3 -m json.tool
+
+# Pin MCP server versions (prevent rug pulls)
+# In mcp.json, use specific versions, not "latest"
+
+# Run MCP servers in separate containers
+# Use Cisco MCP Scanner for analysis:
+# https://github.com/cisco-ai-defense/mcp-scanner
+
+# Audit MCP server network access
+# Check which external endpoints each server contacts
+lsof -i -nP | grep -E "node|mcp" | grep ESTABLISHED
+```
 
 ## IOC Database
 
@@ -172,13 +939,35 @@ The `update-ioc.sh` script:
 
 Zero-dependency Node.js server on port 18800 with:
 - Scan summary donut chart
-- 24 color-coded security check cards
+- 32 color-coded security check cards
 - Gateway status and configuration audit
 - Process tree via `witr` showing ancestry chains
 - Network connections and listening ports
 - File permissions and provider auth status
 - Scan history timeline (last 30 scans)
 - Auto-refresh every 30s + on-demand scan button
+
+### Screenshots
+
+**Dashboard overview** — header with scan summary donut, gateway status, and cron status:
+
+![Dashboard Header](docs/images/dashboard-header.png)
+
+**Security checks grid** — all 24 checks with color-coded status cards (green=clean, yellow=warning, red=critical):
+
+![Security Checks](docs/images/security-checks.png)
+
+**Full dashboard** — complete view including process tree, network connections, and scan history:
+
+![Full Dashboard](docs/images/dashboard-full.png)
+
+**Process tree, network connections, and listening ports:**
+
+![Process Tree & Network](images/2.png)
+
+**Provider auth, blocked commands, and scan history timeline:**
+
+![Provider Auth & History](images/3.png)
 
 ### API Endpoints
 
@@ -215,10 +1004,11 @@ curl -s http://localhost:18800/api/status | python3 -m json.tool
 | CVE | Description | Check |
 |-----|-------------|-------|
 | CVE-2026-25253 | 1-Click RCE via WebSocket hijacking | #14: WebSocket origin validation |
-| CVE-2026-21636 | Permission model bypass | #18: Tool policy audit, #19: Sandbox config |
+| CVE-2026-21636 | Permission model bypass (Node.js UDS sandbox escape) | #18: Tool policy audit, #19: Sandbox config, #28: Node.js version |
 | CVE-2026-22708 | Indirect prompt injection | #9: SKILL.md injection, #10: Memory poisoning |
 | CVE-2026-24763 | Command injection | #3: Reverse shell patterns |
 | CVE-2026-25157 | Command injection | #6: Curl-pipe attacks |
+| CVE-2026-24763 | Docker sandbox command injection | #27: Docker container security |
 
 ## Threat Intelligence Sources
 
@@ -264,6 +1054,15 @@ This project's detection patterns are built from published security research:
 | [CSA AI Safety Initiative](https://cloudsecurityalliance.org) | Moltbook and OpenClaw Security Research Note | Moltbook DB exposure (1.5M API tokens), agent impersonation, lethal trifecta, enterprise risk assessment |
 | [Wiz Research](https://www.wiz.io/blog/exposed-moltbook-database-reveals-millions-of-api-keys) | Hacking Moltbook: 1.5M API Keys | Moltbook Supabase exposure, plaintext OpenAI keys, agent credential theft |
 | [Palo Alto Networks](https://venturebeat.com/security/openclaw-agentic-ai-security-risk-ciso-guide) | Lethal Trifecta Analysis | Private data access + untrusted content + external communication |
+| [CrowdStrike](https://www.crowdstrike.com/en-us/blog/what-security-teams-need-to-know-about-openclaw-ai-super-agent/) | What Security Teams Need to Know | Enterprise detection, Falcon for IT, process tree analysis |
+| [OWASP GenAI](https://genai.owasp.org/resource/owasp-top-10-for-agentic-applications-for-2026/) | Top 10 for Agentic Applications 2026 | Agent goal hijack, tool misuse, identity abuse, MCP risks |
+| [ToxSec](https://www.toxsec.com/p/openclaw-security-checklist) | OpenClaw Security Checklist | Command allowlisting, Docker hardening, MCP audit, egress filtering |
+| [Brandefense](https://brandefense.io/blog/unmanaged-shadow-ai-agent/) | Unmanaged Shadow AI Agent | Shodan exposure (21K+ instances), internet exposure detection |
+| [Aikido.dev](https://www.aikido.dev/blog/fake-clawdbot-vscode-extension-malware) | Fake ClawdBot VS Code Extension | ScreenConnect RAT, VS Code trojan detection |
+| [Permiso](https://permiso.io/blog/inside-the-openclaw-ecosystem-ai-agents-with-privileged-credentials) | AI Agents with Privileged Credentials | Identity abuse, credential chain analysis |
+| [Argus Security Audit](https://github.com/openclaw/openclaw/issues/1796) | 512 Audit Findings | CSRF, OAuth bypass, plaintext credentials, exec-approvals |
+| [yevhen/clawdbot-security-scanner](https://github.com/yevhen/clawdbot-security-scanner) | 37-Check Security Scanner | Token reuse, Tailscale bypass, browser control, session scope |
+| [Prompt Security](https://prompt.security/blog/top-10-mcp-security-risks) | Top 10 MCP Security Risks | Tool poisoning, rug pulls, command injection via MCP |
 
 ## Related Security Tools
 
