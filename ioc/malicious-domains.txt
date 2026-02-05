@@ -1,0 +1,19 @@
+# OpenClaw Known Malicious Domains
+# Source: Koi Security, VirusTotal, Snyk research
+# Format: domain|type|campaign|notes
+
+# Payload hosting
+install.app-distribution.net|payload|clawhavoc|AMOS installer distribution
+glot.io|payload-host|clawhavoc|Base64-obfuscated shell scripts (legitimate service abused)
+
+# Exfiltration
+webhook.site|exfil|generic|Data exfiltration webhook service
+pipedream.net|exfil|generic|Data exfiltration
+requestbin.com|exfil|generic|Data exfiltration
+hookbin.com|exfil|generic|Data exfiltration
+burpcollaborator.net|exfil|generic|Pentest tool (suspicious in skills)
+ngrok.io|exfil|generic|Tunneling service for exfiltration
+interact.sh|exfil|generic|OAST tool for exfiltration
+
+# Fake distribution
+github.com/hedefbari|payload|clawhavoc|Attacker GitHub - openclaw-agent.zip

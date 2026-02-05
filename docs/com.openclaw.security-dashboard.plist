@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  OpenClaw Security Dashboard - LaunchAgent Template
+
+  Before installing, replace __HOME__ with your home directory path:
+    sed "s|__HOME__|$HOME|g" docs/com.openclaw.security-dashboard.plist > ~/Library/LaunchAgents/com.openclaw.security-dashboard.plist
+
+  Then load:
+    launchctl load ~/Library/LaunchAgents/com.openclaw.security-dashboard.plist
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.openclaw.security-dashboard</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/opt/homebrew/opt/node@22/bin/node</string>
+        <string>__HOME__/.openclaw/workspace/skills/security-monitor/dashboard/server.js</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>__HOME__/.local/bin:/opt/homebrew/opt/node@22/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+        <key>HOME</key>
+        <string>__HOME__</string>
+    </dict>
+    <key>StandardOutPath</key>
+    <string>__HOME__/.openclaw/logs/dashboard-stdout.log</string>
+    <key>StandardErrorPath</key>
+    <string>__HOME__/.openclaw/logs/dashboard-stderr.log</string>
+    <key>WorkingDirectory</key>
+    <string>__HOME__/.openclaw/workspace/skills/security-monitor/dashboard</string>
+</dict>
+</plist>

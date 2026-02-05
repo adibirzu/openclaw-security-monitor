@@ -1,0 +1,5 @@
+# Known Malicious ClawHub Publishers
+# Source: Koi Security, VirusTotal analysis
+# Format: username|skill_count|campaign|notes
+
+hightower6eu|314|clawhavoc|Primary ClawHavoc publisher, crypto/finance/social lures

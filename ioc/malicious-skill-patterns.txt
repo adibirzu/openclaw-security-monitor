@@ -1,0 +1,41 @@
+# Malicious Skill Name Patterns
+# These patterns match known malicious skill naming conventions
+# Source: Koi Security ClawHavoc analysis of 341 skills
+# Format: pattern|category|notes
+
+# ClawHub typosquats (28 variants found)
+^clawhub[0-9]*$|typosquat|clawhub misspelling
+^clawhubb$|typosquat|double-b
+^clawwhub$|typosquat|double-w
+^cllawhub$|typosquat|double-l
+^clawhubcli$|typosquat|fake CLI
+^claw-hub$|typosquat|hyphenated
+^clawhubb?-cli$|typosquat|CLI variant
+
+# Crypto lures (111+ skills)
+solana-wallet|crypto-lure|solana wallet variants
+phantom-wallet|crypto-lure|phantom wallet variants
+wallet-tracker|crypto-lure|generic wallet tracker
+bybit-agent|crypto-lure|exchange bot
+base-agent|crypto-lure|Base chain bot
+eth-gas-track|crypto-lure|gas tracker lures
+
+# Prediction market lures (34 skills)
+polymarket|prediction-lure|polymarket variants
+better-polymarket|prediction-lure|specific malicious name
+
+# YouTube lures (57 skills)
+youtube-summarize|youtube-lure|summarizer variants
+youtube-.*-pro$|youtube-lure|pro suffix pattern
+
+# Auto-updater lures (28 skills)
+auto-updat|updater-lure|fake updater skills
+
+# Finance lures (51 skills)
+yahoo-finance|finance-lure|finance data lures
+stock-track|finance-lure|stock tracker
+
+# Google workspace lures (17 skills)
+google-workspace|gworkspace-lure|workspace integration lures
+gmail-|gworkspace-lure|gmail tool lures
+gdrive-|gworkspace-lure|drive tool lures
