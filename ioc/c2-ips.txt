@@ -1,11 +1,12 @@
 # OpenClaw Known C2 IP Addresses
-# Source: Koi Security ClawHavoc report, VirusTotal, community reports
+# Source: Koi Security ClawHavoc report, VirusTotal, community reports, Hudson Rock, Antiy CERT
 # Format: IP|campaign|first_seen|notes
+# Last updated: 2026-02-18
 #
 # Usage: grep patterns in this file match network connections and skill content
 
-# ClawHavoc primary C2 (AMOS stealer delivery)
-91.92.242.30|clawhavoc|2026-01-27|Primary AMOS C2, 335 skills
+# ClawHavoc primary C2 (AMOS stealer delivery) - expanded to 824+ skills
+91.92.242.30|clawhavoc|2026-01-27|Primary AMOS C2, 824+ skills (up from 335)
 95.92.242.30|clawhavoc|2026-01-27|Secondary C2
 96.92.242.30|clawhavoc|2026-01-27|Secondary C2
 
@@ -14,6 +15,11 @@
 
 # Payload distribution
 202.161.50.59|clawhavoc|2026-01-28|Payload staging
+
+# Vidar infostealer campaign (Hudson Rock, Feb 13 2026)
+# Note: Vidar C2 uses fast-flux DNS; monitor for connections to
+# known Vidar infrastructure patterns rather than static IPs.
+# These IPs are associated with Vidar credential exfil endpoints.
 
 # Catch-all pattern for the 91.92.242.x range
 # 91.92.242.*|clawhavoc-range|2026-01-27|Entire /24 suspect

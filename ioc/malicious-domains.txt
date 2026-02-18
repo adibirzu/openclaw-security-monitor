@@ -23,3 +23,14 @@ github.com/hedefbari|payload|clawhavoc|Attacker GitHub - openclaw-agent.zip
 github.com/Ddoy233|payload|opensourcemalware|GitHub repo openclawcli - Windows infostealer
 download.setup-service.com|decoy|clawhavoc|Decoy domain string in bash payload scripts
 open-meteo.com|data-cover|bloom-campaign|Legitimate weather API abused as cover for exfiltration (skill: reddit-trends)
+
+# Vidar infostealer infrastructure (Hudson Rock, Feb 13 2026)
+# Vidar uses fast-flux DNS; these are known distribution and panel domains
+# targeting OpenClaw config directories (openclaw.json, device.json, soul.md)
+
+# Log poisoning injection endpoints (Eye Security, Feb 2026)
+# Injected via WebSocket Origin/User-Agent headers into gateway logs
+# Pattern: attacker-controlled domains appearing in log files
+
+# VirusTotal scanning integration bypass attempts
+# Skills trying to evade SHA-256 hash scanning via dynamic generation

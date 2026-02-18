@@ -52,3 +52,24 @@ gdrive-|gworkspace-lure|drive tool lures
 reddit-|social-lure|Reddit tool lures
 linkedin-|social-lure|LinkedIn tool lures
 twitter-|social-lure|Twitter/X tool lures
+
+# NEW categories discovered Feb 2026 (Antiy CERT, Snyk ToxicSkills)
+# Browser automation agent lures
+browser-automat|browser-lure|Browser automation agent lures
+web-scrape|browser-lure|Web scraping tool lures
+
+# Coding agent lures
+coding-agent|coding-lure|Coding assistant lures
+code-review|coding-lure|Code review tool lures
+
+# PDF tool lures
+pdf-convert|pdf-lure|PDF conversion tool lures
+pdf-extract|pdf-lure|PDF extraction tool lures
+
+# Fake security scanning skills (ironic camouflage)
+security-scan|security-lure|Fake security scanners that are themselves malicious
+virus-scan|security-lure|Fake antivirus/scanning tools
+
+# WhatsApp integration lures
+whatsapp-|messaging-lure|WhatsApp integration lures
+telegram-bot|messaging-lure|Telegram bot lures

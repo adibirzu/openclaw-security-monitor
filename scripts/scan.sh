@@ -1,11 +1,16 @@
 #!/bin/bash
-# OpenClaw Security Monitor - Enhanced Threat Scanner v2.1
+# OpenClaw Security Monitor - Enhanced Threat Scanner v2.3
 # https://github.com/adibirzu/openclaw-security-monitor
 #
-# 24-point security scanner. Detects: ClawHavoc AMOS stealer, C2
-# infrastructure, reverse shells, credential exfiltration, memory
-# poisoning, WebSocket hijacking, SKILL.md injection, DM/tool/sandbox
+# 32-point security scanner. Detects: ClawHavoc AMOS stealer (824+ skills),
+# C2 infrastructure, reverse shells, credential exfiltration, memory
+# poisoning, WebSocket hijacking (CVE-2026-25253), SKILL.md injection,
+# log poisoning, Vidar infostealer targeting, path traversal
+# (CVE-2026-26329), exec bypass, MCP tool poisoning, DM/tool/sandbox
 # policy violations, persistence mechanisms, plugin threats, and more.
+#
+# IOC database updated: 2026-02-18
+# Threat coverage: 10 CVEs, 14+ GHSAs, 1,184 malicious packages
 #
 # Exit codes: 0=SECURE, 1=WARNINGS, 2=COMPROMISED
 set -uo pipefail
@@ -13,6 +18,7 @@ set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 IOC_DIR="$PROJECT_DIR/ioc"
+SELF_DIR_NAME="$(basename "$PROJECT_DIR")"
 
 OPENCLAW_DIR="${OPENCLAW_HOME:-$HOME/.openclaw}"
 SKILLS_DIR="$OPENCLAW_DIR/workspace/skills"
@@ -20,6 +26,7 @@ WORKSPACE_DIR="$OPENCLAW_DIR/workspace"
 LOG_DIR="$OPENCLAW_DIR/logs"
 LOG_FILE="$LOG_DIR/security-scan.log"
 TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+export PATH="$HOME/.local/bin:/opt/homebrew/opt/node@22/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
 
 CRITICAL=0
 WARNINGS=0
@@ -34,12 +41,61 @@ result_clean() { log "CLEAN: $1"; CLEAN=$((CLEAN + 1)); }
 result_warn() { log "WARNING: $1"; WARNINGS=$((WARNINGS + 1)); }
 result_critical() { log "CRITICAL: $1"; CRITICAL=$((CRITICAL + 1)); }
 
+# Use timeout if available (macOS may only have gtimeout via coreutils)
+TIMEOUT_BIN=""
+if command -v timeout &>/dev/null; then
+    TIMEOUT_BIN="timeout"
+elif command -v gtimeout &>/dev/null; then
+    TIMEOUT_BIN="gtimeout"
+fi
+
+run_with_timeout() {
+    local secs="$1"
+    shift
+    if [ -n "$TIMEOUT_BIN" ]; then
+        "$TIMEOUT_BIN" "$secs" "$@"
+    elif command -v python3 &>/dev/null; then
+        python3 - "$secs" "$@" <<'PY'
+import os
+import signal
+import subprocess
+import sys
+
+def main():
+    try:
+        secs = float(sys.argv[1])
+    except Exception:
+        secs = 0
+    cmd = sys.argv[2:]
+    if not cmd:
+        sys.exit(1)
+
+    try:
+        proc = subprocess.Popen(cmd)
+        try:
+            proc.wait(timeout=secs if secs > 0 else None)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait()
+            sys.exit(124)
+        sys.exit(proc.returncode if proc.returncode is not None else 0)
+    except FileNotFoundError:
+        sys.exit(127)
+
+if __name__ == "__main__":
+    main()
+PY
+    else
+        "$@"
+    fi
+}
+
 # Count total checks
 TOTAL_CHECKS=32
 
 log "========================================"
 log "OPENCLAW SECURITY SCAN - $TIMESTAMP"
-log "Scanner: v2.2 (openclaw-security-monitor)"
+log "Scanner: v2.3 (openclaw-security-monitor)"
 log "========================================"
 
 # Load IOC data
@@ -66,7 +122,7 @@ header 1 "Scanning for known C2 infrastructure..."
 
 C2_PATTERN=$(load_ips | tr '\n' '|' | sed 's/|$//' | sed 's/\./\\./g')
 if [ -n "$C2_PATTERN" ]; then
-    C2_HITS=$(grep -rlE --exclude-dir=security-monitor "$C2_PATTERN" "$SKILLS_DIR" 2>/dev/null || true)
+    C2_HITS=$(grep -rlE --exclude-dir="$SELF_DIR_NAME" "$C2_PATTERN" "$SKILLS_DIR" 2>/dev/null || true)
     if [ -n "$C2_HITS" ]; then
         result_critical "Known C2 IP found in:"
         log "$C2_HITS"
@@ -83,7 +139,7 @@ fi
 header 2 "Scanning for AMOS stealer / AuthTool markers..."
 
 AMOS_PATTERN="authtool|atomic.stealer|AMOS|NovaStealer|nova.stealer|osascript.*password|osascript.*dialog|osascript.*keychain|Security\.framework.*Auth|openclaw-agent\.exe|openclaw-agent\.zip|openclawcli\.zip|AuthTool|Installer-Package"
-AMOS_HITS=$(grep -rliE --exclude-dir=security-monitor "$AMOS_PATTERN" "$SKILLS_DIR" 2>/dev/null || true)
+AMOS_HITS=$(grep -rliE --exclude-dir="$SELF_DIR_NAME" "$AMOS_PATTERN" "$SKILLS_DIR" 2>/dev/null || true)
 if [ -n "$AMOS_HITS" ]; then
     result_critical "AMOS/stealer markers found in:"
     log "$AMOS_HITS"
@@ -97,7 +153,7 @@ fi
 header 3 "Scanning for reverse shells & backdoors..."
 
 SHELL_PATTERN="nc -e|/dev/tcp/|mkfifo.*nc|bash -i >|socat.*exec|python.*socket.*connect|nohup.*bash.*tcp|perl.*socket.*INET|ruby.*TCPSocket|php.*fsockopen|lua.*socket\.tcp|xattr -[cr]|com\.apple\.quarantine"
-SHELL_HITS=$(grep -rlinE --exclude-dir=security-monitor "$SHELL_PATTERN" "$SKILLS_DIR" 2>/dev/null || true)
+SHELL_HITS=$(grep -rlinE --exclude-dir="$SELF_DIR_NAME" "$SHELL_PATTERN" "$SKILLS_DIR" 2>/dev/null || true)
 if [ -n "$SHELL_HITS" ]; then
     result_critical "Reverse shell patterns found in:"
     log "$SHELL_HITS"
@@ -111,7 +167,7 @@ fi
 header 4 "Scanning for credential exfiltration endpoints..."
 
 DOMAIN_PATTERN=$(load_domains | tr '\n' '|' | sed 's/|$//' | sed 's/\./\\./g')
-EXFIL_HITS=$(grep -rlinE --exclude-dir=security-monitor "$DOMAIN_PATTERN" "$SKILLS_DIR" 2>/dev/null || true)
+EXFIL_HITS=$(grep -rlinE --exclude-dir="$SELF_DIR_NAME" "$DOMAIN_PATTERN" "$SKILLS_DIR" 2>/dev/null || true)
 if [ -n "$EXFIL_HITS" ]; then
     result_critical "Exfiltration endpoints found in:"
     log "$EXFIL_HITS"
@@ -125,7 +181,7 @@ fi
 header 5 "Scanning for crypto wallet targeting..."
 
 CRYPTO_PATTERN="wallet.*private.*key|seed.phrase|mnemonic|keystore.*decrypt|phantom.*wallet|metamask.*vault|exchange.*api.*key|solana.*keypair|ethereum.*keyfile"
-CRYPTO_HITS=$(grep -rlinE --exclude-dir=security-monitor "$CRYPTO_PATTERN" "$SKILLS_DIR" 2>/dev/null || true)
+CRYPTO_HITS=$(grep -rlinE --exclude-dir="$SELF_DIR_NAME" "$CRYPTO_PATTERN" "$SKILLS_DIR" 2>/dev/null || true)
 if [ -n "$CRYPTO_HITS" ]; then
     result_warn "Crypto wallet patterns found in:"
     log "$CRYPTO_HITS"
@@ -139,7 +195,7 @@ fi
 header 6 "Scanning for curl-pipe and download attacks..."
 
 CURL_PATTERN="curl.*\|.*sh|curl.*\|.*bash|wget.*\|.*sh|curl -fsSL.*\||wget -q.*\||curl.*-o.*/tmp/"
-CURL_HITS=$(grep -rlinE --exclude-dir=security-monitor "$CURL_PATTERN" "$SKILLS_DIR" 2>/dev/null || true)
+CURL_HITS=$(grep -rlinE --exclude-dir="$SELF_DIR_NAME" "$CURL_PATTERN" "$SKILLS_DIR" 2>/dev/null || true)
 if [ -n "$CURL_HITS" ]; then
     result_warn "Curl-pipe patterns found in:"
     log "$CURL_HITS"
@@ -204,7 +260,7 @@ while IFS= read -r skillmd; do
     if grep -qiE "$INJECTION_PATTERN" "$skillmd" 2>/dev/null; then
         INJECT_HITS="$INJECT_HITS\n  $skillmd"
     fi
-done < <(find "$SKILLS_DIR" -name "SKILL.md" -not -path "*/security-monitor/*" 2>/dev/null)
+done < <(find "$SKILLS_DIR" -name "SKILL.md" -not -path "*/$SELF_DIR_NAME/*" 2>/dev/null)
 
 if [ -n "$INJECT_HITS" ]; then
     result_warn "SKILL.md files with suspicious install instructions:$INJECT_HITS"
@@ -232,7 +288,7 @@ for memfile in "$WORKSPACE_DIR/SOUL.md" "$WORKSPACE_DIR/MEMORY.md" "$WORKSPACE_D
 done
 
 # Check skill SKILL.md files for attempts to write to memory files
-MEM_WRITE_HITS=$(grep -rliE --exclude-dir=security-monitor "SOUL\.md|MEMORY\.md|IDENTITY\.md" "$SKILLS_DIR" 2>/dev/null | while read -r f; do
+MEM_WRITE_HITS=$(grep -rliE --exclude-dir="$SELF_DIR_NAME" "SOUL\.md|MEMORY\.md|IDENTITY\.md" "$SKILLS_DIR" 2>/dev/null | while read -r f; do
     # Only flag if the file tries to WRITE to these, not just reference them
     if grep -qiE "write.*SOUL|write.*MEMORY|modify.*SOUL|echo.*>>.*SOUL|cat.*>.*SOUL|append.*MEMORY" "$f" 2>/dev/null; then
         echo "  $f"
@@ -254,7 +310,7 @@ header 11 "Scanning for base64-obfuscated payloads..."
 
 # ClawHavoc used base64 to hide payloads on glot.io
 B64_PATTERN="base64 -[dD]|base64 --decode|atob\(|Buffer\.from\(.*base64|echo.*\|.*base64.*\|.*bash|echo.*\|.*base64.*\|.*sh|python.*b64decode|import base64"
-B64_HITS=$(grep -rlinE --exclude-dir=security-monitor "$B64_PATTERN" "$SKILLS_DIR" 2>/dev/null || true)
+B64_HITS=$(grep -rlinE --exclude-dir="$SELF_DIR_NAME" "$B64_PATTERN" "$SKILLS_DIR" 2>/dev/null || true)
 if [ -n "$B64_HITS" ]; then
     result_warn "Base64 decode patterns found in:"
     log "$B64_HITS"
@@ -269,7 +325,7 @@ header 12 "Scanning for external binary downloads..."
 
 # ClawHavoc distributed openclaw-agent.exe via GitHub releases, openclawcli.zip via password-protected archives
 BIN_PATTERN="\.exe|\.dmg|\.pkg|\.msi|\.app\.zip|releases/download|github\.com/.*/releases|\.zip.*password|password.*\.zip|openclawcli\.zip|openclaw-agent|AuthTool.*download|download.*AuthTool"
-BIN_HITS=$(grep -rlinE --exclude-dir=security-monitor "$BIN_PATTERN" "$SKILLS_DIR" 2>/dev/null || true)
+BIN_HITS=$(grep -rlinE --exclude-dir="$SELF_DIR_NAME" "$BIN_PATTERN" "$SKILLS_DIR" 2>/dev/null || true)
 if [ -n "$BIN_HITS" ]; then
     result_warn "External binary download references found in:"
     log "$BIN_HITS"
@@ -287,21 +343,21 @@ export PATH="$HOME/.local/bin:/opt/homebrew/opt/node@22/bin:/opt/homebrew/bin:$P
 
 if command -v openclaw &>/dev/null; then
     # Check bind address
-    BIND=$(timeout 10 openclaw config get gateway.bind 2>/dev/null || echo "unknown")
+    BIND=$(run_with_timeout 10 openclaw config get gateway.bind 2>/dev/null || echo "unknown")
     if [ "$BIND" = "lan" ] || [ "$BIND" = "0.0.0.0" ]; then
         result_warn "Gateway bound to LAN ($BIND) - accessible from network"
         GW_ISSUES=$((GW_ISSUES + 1))
     fi
 
     # Check if auth is enabled
-    AUTH_MODE=$(timeout 10 openclaw config get gateway.auth.mode 2>/dev/null || echo "unknown")
+    AUTH_MODE=$(run_with_timeout 10 openclaw config get gateway.auth.mode 2>/dev/null || echo "unknown")
     if [ "$AUTH_MODE" = "none" ] || [ "$AUTH_MODE" = "off" ]; then
         result_critical "Gateway authentication is DISABLED"
         GW_ISSUES=$((GW_ISSUES + 1))
     fi
 
     # Check OpenClaw version for CVE-2026-25253
-    OC_VERSION=$(timeout 5 openclaw --version 2>/dev/null || echo "unknown")
+    OC_VERSION=$(run_with_timeout 5 openclaw --version 2>/dev/null || echo "unknown")
     log "  OpenClaw version: $OC_VERSION"
 fi
 
@@ -315,7 +371,7 @@ fi
 header 14 "Checking WebSocket security (CVE-2026-25253)..."
 
 # Test if gateway WebSocket accepts connections without origin validation
-GW_PORT=$(timeout 5 openclaw config get gateway.port 2>/dev/null || echo "18789")
+GW_PORT=$(run_with_timeout 5 openclaw config get gateway.port 2>/dev/null || echo "18789")
 GW_PORT=$(echo "$GW_PORT" | grep -o '[0-9]*' | head -1)
 GW_PORT=${GW_PORT:-18789}
 WS_RAW=$(curl -s -o /dev/null -w "%{http_code}" \
@@ -329,7 +385,31 @@ WS_RAW=$(curl -s -o /dev/null -w "%{http_code}" \
 WS_TEST=$(echo "$WS_RAW" | head -c 3)
 
 if [ "$WS_TEST" = "101" ]; then
-    result_critical "Gateway accepts WebSocket from arbitrary origins (CVE-2026-25253 may be unpatched)"
+    # HTTP 101 means upgrade accepted - check if version is patched (v2026.1.29+)
+    # Patched versions validate origin at WebSocket protocol level, not HTTP upgrade
+    PATCHED_WS=false
+    if [ -n "$OC_VERSION" ] && [ "$OC_VERSION" != "unknown" ]; then
+        # Extract major.minor version (e.g., 2026.2.17 -> 2026.2)
+        OC_MAJOR=$(echo "$OC_VERSION" | cut -d'.' -f1)
+        OC_MINOR=$(echo "$OC_VERSION" | cut -d'.' -f2)
+        OC_PATCH=$(echo "$OC_VERSION" | cut -d'.' -f3 | cut -d'-' -f1)
+        if [ "$OC_MAJOR" -ge 2026 ] 2>/dev/null; then
+            if [ "$OC_MINOR" -ge 2 ] 2>/dev/null; then
+                PATCHED_WS=true
+            elif [ "$OC_MINOR" -eq 1 ] && [ "$OC_PATCH" -ge 29 ] 2>/dev/null; then
+                PATCHED_WS=true
+            fi
+        fi
+    fi
+    # Also check if gateway auth token is configured (mitigates even without origin check)
+    HAS_GW_AUTH=$(run_with_timeout 5 openclaw config get gateway.auth.mode 2>/dev/null || echo "")
+    if [ "$PATCHED_WS" = true ] && [ -n "$HAS_GW_AUTH" ] && [ "$HAS_GW_AUTH" != "none" ]; then
+        result_clean "WebSocket: v$OC_VERSION patched + gateway auth ($HAS_GW_AUTH) - CVE-2026-25253 mitigated"
+    elif [ "$PATCHED_WS" = true ]; then
+        result_warn "WebSocket: v$OC_VERSION patched but no gateway auth token (recommend setting gateway.auth)"
+    else
+        result_critical "Gateway accepts WebSocket from arbitrary origins (CVE-2026-25253 may be unpatched)"
+    fi
 elif [ "$WS_TEST" = "000" ]; then
     log "  Gateway not reachable on port $GW_PORT (may be normal)"
     result_clean "WebSocket test inconclusive (gateway not reachable)"
@@ -349,7 +429,7 @@ if [ -f "$IOC_DIR/malicious-publishers.txt" ]; then
     PUB_HITS=""
     for pub in $PUBLISHERS; do
         # Check skill metadata for publisher references
-        FOUND=$(grep -rl --exclude-dir=security-monitor "$pub" "$SKILLS_DIR" 2>/dev/null || true)
+        FOUND=$(grep -rl --exclude-dir="$SELF_DIR_NAME" "$pub" "$SKILLS_DIR" 2>/dev/null || true)
         if [ -n "$FOUND" ]; then
             PUB_HITS="$PUB_HITS\n  Publisher '$pub' referenced in: $FOUND"
         fi
@@ -370,10 +450,10 @@ header 16 "Scanning for sensitive environment/credential leakage..."
 
 ENV_PATTERN="\.env|\.bashrc|\.zshrc|\.ssh/|id_rsa|id_ed25519|\.aws/credentials|\.kube/config|\.docker/config|keychain|login\.keychain|Cookies\.binarycookies|\.clawdbot/\.env|\.openclaw/openclaw\.json|auth-profiles\.json|\.git-credentials|\.netrc|moltbook.*token|moltbook.*api|MOLTBOOK_TOKEN|OPENAI_API_KEY|ANTHROPIC_API_KEY|sk-[a-zA-Z0-9]"
 # Only flag skills that READ these files or reference API key patterns (not just mention them in docs)
-ENV_HITS=$(grep -rlinE --exclude-dir=security-monitor "cat.*(${ENV_PATTERN})|read.*(${ENV_PATTERN})|open.*(${ENV_PATTERN})|fs\.read.*(${ENV_PATTERN})|source.*(${ENV_PATTERN})" "$SKILLS_DIR" 2>/dev/null || true)
+ENV_HITS=$(grep -rlinE --exclude-dir="$SELF_DIR_NAME" "cat.*(${ENV_PATTERN})|read.*(${ENV_PATTERN})|open.*(${ENV_PATTERN})|fs\.read.*(${ENV_PATTERN})|source.*(${ENV_PATTERN})" "$SKILLS_DIR" 2>/dev/null || true)
 
 # Also check for hardcoded API keys or Moltbook tokens in skill code (CSA report)
-API_KEY_HITS=$(grep -rlinE --exclude-dir=security-monitor "sk-[a-zA-Z0-9]{20,}|OPENAI_API_KEY\s*=\s*['\"][^$]|ANTHROPIC_API_KEY\s*=\s*['\"][^$]|moltbook.*token\s*=\s*['\"]" "$SKILLS_DIR" 2>/dev/null || true)
+API_KEY_HITS=$(grep -rlinE --exclude-dir="$SELF_DIR_NAME" "sk-[a-zA-Z0-9]{20,}|OPENAI_API_KEY\s*=\s*['\"][^$]|ANTHROPIC_API_KEY\s*=\s*['\"][^$]|moltbook.*token\s*=\s*['\"]" "$SKILLS_DIR" 2>/dev/null || true)
 if [ -n "$API_KEY_HITS" ]; then
     result_critical "Hardcoded API keys or Moltbook tokens found in:"
     log "$API_KEY_HITS"
@@ -393,13 +473,13 @@ header 17 "Auditing DM access policies..."
 DM_ISSUES=0
 if command -v openclaw &>/dev/null; then
     for channel in whatsapp telegram discord slack signal; do
-        DM_POLICY=$(timeout 10 openclaw config get "channels.${channel}.dmPolicy" 2>/dev/null || echo "")
+        DM_POLICY=$(run_with_timeout 10 openclaw config get "channels.${channel}.dmPolicy" 2>/dev/null || echo "")
         if [ "$DM_POLICY" = "open" ]; then
             result_warn "Channel '$channel' has dmPolicy='open' (anyone can message)"
             DM_ISSUES=$((DM_ISSUES + 1))
         fi
         # Check for wildcard in allowFrom
-        ALLOW_FROM=$(timeout 10 openclaw config get "channels.${channel}.allowFrom" 2>/dev/null || echo "")
+        ALLOW_FROM=$(run_with_timeout 10 openclaw config get "channels.${channel}.allowFrom" 2>/dev/null || echo "")
         if echo "$ALLOW_FROM" | grep -q '"*"' 2>/dev/null; then
             result_warn "Channel '$channel' has wildcard '*' in allowFrom"
             DM_ISSUES=$((DM_ISSUES + 1))
@@ -418,9 +498,9 @@ header 18 "Auditing tool policies and elevated access..."
 TOOL_ISSUES=0
 if command -v openclaw &>/dev/null; then
     # Check if elevated tools are broadly enabled
-    ELEVATED=$(timeout 10 openclaw config get "tools.elevated.enabled" 2>/dev/null || echo "")
+    ELEVATED=$(run_with_timeout 10 openclaw config get "tools.elevated.enabled" 2>/dev/null || echo "")
     if [ "$ELEVATED" = "true" ]; then
-        ELEVATED_ALLOW=$(timeout 10 openclaw config get "tools.elevated.allowFrom" 2>/dev/null || echo "")
+        ELEVATED_ALLOW=$(run_with_timeout 10 openclaw config get "tools.elevated.allowFrom" 2>/dev/null || echo "")
         if echo "$ELEVATED_ALLOW" | grep -q '"*"' 2>/dev/null; then
             result_critical "Elevated tools enabled with wildcard allowFrom"
             TOOL_ISSUES=$((TOOL_ISSUES + 1))
@@ -430,7 +510,7 @@ if command -v openclaw &>/dev/null; then
     fi
 
     # Check if exec tool is in deny list
-    DENY_LIST=$(timeout 10 openclaw config get "tools.deny" 2>/dev/null || echo "")
+    DENY_LIST=$(run_with_timeout 10 openclaw config get "tools.deny" 2>/dev/null || echo "")
     if [ -z "$DENY_LIST" ] || [ "$DENY_LIST" = "[]" ] || [ "$DENY_LIST" = "null" ]; then
         result_warn "No tools in deny list (consider blocking: exec, process, browser)"
         TOOL_ISSUES=$((TOOL_ISSUES + 1))
@@ -447,7 +527,7 @@ header 19 "Checking sandbox configuration..."
 
 SANDBOX_ISSUES=0
 if command -v openclaw &>/dev/null; then
-    SANDBOX_MODE=$(timeout 10 openclaw config get "sandbox.mode" 2>/dev/null || echo "")
+    SANDBOX_MODE=$(run_with_timeout 10 openclaw config get "sandbox.mode" 2>/dev/null || echo "")
     if [ "$SANDBOX_MODE" = "off" ] || [ "$SANDBOX_MODE" = "none" ]; then
         result_warn "Sandbox mode is disabled (consider: mode='all')"
         SANDBOX_ISSUES=$((SANDBOX_ISSUES + 1))
@@ -455,7 +535,7 @@ if command -v openclaw &>/dev/null; then
         log "  Sandbox mode: $SANDBOX_MODE"
     fi
 
-    WORKSPACE_ACCESS=$(timeout 10 openclaw config get "sandbox.workspaceAccess" 2>/dev/null || echo "")
+    WORKSPACE_ACCESS=$(run_with_timeout 10 openclaw config get "sandbox.workspaceAccess" 2>/dev/null || echo "")
     if [ "$WORKSPACE_ACCESS" = "rw" ]; then
         log "  INFO: Sandbox workspace access is read-write"
     fi
@@ -471,7 +551,7 @@ header 20 "Checking mDNS/Bonjour discovery settings..."
 
 MDNS_ISSUES=0
 if command -v openclaw &>/dev/null; then
-    MDNS_MODE=$(timeout 10 openclaw config get "discovery.mdns.mode" 2>/dev/null || echo "")
+    MDNS_MODE=$(run_with_timeout 10 openclaw config get "discovery.mdns.mode" 2>/dev/null || echo "")
     if [ "$MDNS_MODE" = "full" ]; then
         result_warn "mDNS broadcasting in 'full' mode (exposes paths, SSH port)"
         MDNS_ISSUES=$((MDNS_ISSUES + 1))
@@ -556,7 +636,7 @@ if [ -d "$HOME/Library/LaunchAgents" ]; then
 fi
 
 # Check crontab for suspicious entries
-CRON_ENTRIES=$(crontab -l 2>/dev/null | grep -iv "security-monitor\|#" | grep -iE "openclaw|clawdbot|moltbot|curl.*\|.*sh|wget.*\|.*bash" || true)
+CRON_ENTRIES=$(crontab -l 2>/dev/null | grep -ivE "${SELF_DIR_NAME}|#" | grep -iE "openclaw|clawdbot|moltbot|curl.*\|.*sh|wget.*\|.*bash" || true)
 if [ -n "$CRON_ENTRIES" ]; then
     result_warn "Suspicious cron entries found:"
     log "  $CRON_ENTRIES"
@@ -565,7 +645,7 @@ fi
 
 # Check for unexpected systemd services (Linux)
 if command -v systemctl &>/dev/null; then
-    SYS_SERVICES=$(systemctl --user list-units --type=service --all 2>/dev/null | grep -iE "openclaw|clawdbot|moltbot" | grep -v "security-monitor" || true)
+    SYS_SERVICES=$(systemctl --user list-units --type=service --all 2>/dev/null | grep -iE "openclaw|clawdbot|moltbot" | grep -v "$SELF_DIR_NAME" || true)
     if [ -n "$SYS_SERVICES" ]; then
         log "  Systemd services:"
         log "  $SYS_SERVICES"
@@ -615,7 +695,7 @@ header 24 "Checking log redaction settings..."
 
 LOG_ISSUES=0
 if command -v openclaw &>/dev/null; then
-    REDACT=$(timeout 10 openclaw config get "logging.redactSensitive" 2>/dev/null || echo "")
+    REDACT=$(run_with_timeout 10 openclaw config get "logging.redactSensitive" 2>/dev/null || echo "")
     if [ "$REDACT" = "off" ] || [ "$REDACT" = "false" ] || [ "$REDACT" = "none" ]; then
         result_warn "Log redaction is disabled (sensitive data may leak to logs)"
         LOG_ISSUES=$((LOG_ISSUES + 1))
@@ -645,9 +725,9 @@ header 25 "Checking for reverse proxy localhost trust bypass..."
 PROXY_ISSUES=0
 if command -v openclaw &>/dev/null; then
     # Check if bound to LAN with no trusted proxy configuration
-    BIND_ADDR=$(timeout 10 openclaw config get "gateway.bind" 2>/dev/null || echo "")
-    TRUSTED_PROXIES=$(timeout 10 openclaw config get "gateway.trustedProxies" 2>/dev/null || echo "")
-    DISABLE_DEVICE_AUTH=$(timeout 10 openclaw config get "gateway.dangerouslyDisableDeviceAuth" 2>/dev/null || echo "")
+    BIND_ADDR=$(run_with_timeout 10 openclaw config get "gateway.bind" 2>/dev/null || echo "")
+    TRUSTED_PROXIES=$(run_with_timeout 10 openclaw config get "gateway.trustedProxies" 2>/dev/null || echo "")
+    DISABLE_DEVICE_AUTH=$(run_with_timeout 10 openclaw config get "gateway.dangerouslyDisableDeviceAuth" 2>/dev/null || echo "")
 
     if [ "$DISABLE_DEVICE_AUTH" = "true" ]; then
         result_critical "Device authentication is disabled (dangerouslyDisableDeviceAuth=true)"
@@ -851,7 +931,7 @@ header 32 "Auditing MCP server configuration..."
 MCP_ISSUES=0
 if command -v openclaw &>/dev/null; then
     # Check if all project MCP servers are enabled (should use allowlist)
-    MCP_ALL=$(timeout 10 openclaw config get "mcp.enableAllProjectMcpServers" 2>/dev/null || echo "")
+    MCP_ALL=$(run_with_timeout 10 openclaw config get "mcp.enableAllProjectMcpServers" 2>/dev/null || echo "")
     if [ "$MCP_ALL" = "true" ]; then
         result_warn "All project MCP servers enabled (use explicit allowlist instead)"
         MCP_ISSUES=$((MCP_ISSUES + 1))

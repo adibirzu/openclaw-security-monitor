@@ -1,14 +1,18 @@
 # OpenClaw Security Monitor
 
-Proactive security monitoring, threat scanning, and real-time visibility for [OpenClaw](https://github.com/openclawai/openclaw) deployments. Detects threats from the **ClawHavoc** campaign, **AMOS stealer**, supply chain attacks, memory poisoning, and CVE-2026-25253 (1-Click RCE).
+Proactive security monitoring, threat scanning, and real-time visibility for [OpenClaw](https://github.com/openclawai/openclaw) deployments. Detects threats from the **ClawHavoc** campaign (824+ malicious skills), **AMOS stealer**, **Vidar infostealer**, supply chain attacks, memory poisoning, log poisoning, **10 CVEs**, and **14+ GHSAs**.
 
 ## Why This Exists
 
-In late January 2026, security researchers found that **12% of all ClawHub skills were malicious** — 341 out of 2,857 skills across multiple campaigns. The primary campaign, ClawHavoc, delivered the Atomic Stealer (AMOS) macOS infostealer targeting crypto wallets, SSH credentials, and browser passwords.
+In late January 2026, security researchers found that **12% of all ClawHub skills were malicious** — 341 out of 2,857 skills across multiple campaigns. By mid-February, this expanded to **824+ malicious skills** with **1,184 malicious packages** across 12 publisher accounts (Antiy CERT). The Snyk ToxicSkills study found **36% of all ClawHub skills contain security flaws** (3,984 scanned).
 
-Meanwhile, CVE-2026-25253 demonstrated that a single malicious link could achieve full remote code execution on any OpenClaw instance through WebSocket hijacking — even those bound to localhost.
+The primary campaign, ClawHavoc, delivered the Atomic Stealer (AMOS) macOS infostealer targeting crypto wallets, SSH credentials, and browser passwords. In February, Hudson Rock discovered **Vidar infostealer variants specifically targeting OpenClaw agent identities** — stealing openclaw.json, device.json, soul.md, and memory.md files.
 
-This project provides defense-in-depth monitoring for self-hosted OpenClaw installations.
+Meanwhile, CVE-2026-25253 demonstrated that a single malicious link could achieve full remote code execution on any OpenClaw instance through WebSocket hijacking — even those bound to localhost. Since then, **9 additional CVEs and 14+ GHSAs** have been disclosed (path traversal, exec bypass, webhook forgery, log poisoning, and more).
+
+**135,000+ instances** are exposed across 82 countries, with **12,812 exploitable via RCE**. Major security firms including CrowdStrike, Bitdefender, Palo Alto Networks, Cisco, and Kaspersky have issued advisories. Meta has banned OpenClaw from corporate devices.
+
+This project provides defense-in-depth monitoring for self-hosted OpenClaw installations. **Minimum safe version: v2026.2.14**.
 
 ## Features
 
@@ -1143,6 +1147,17 @@ This project's detection patterns are built from published security research:
 | [Argus Security Audit](https://github.com/openclaw/openclaw/issues/1796) | 512 Audit Findings | CSRF, OAuth bypass, plaintext credentials, exec-approvals |
 | [yevhen/clawdbot-security-scanner](https://github.com/yevhen/clawdbot-security-scanner) | 37-Check Security Scanner | Token reuse, Tailscale bypass, browser control, session scope |
 | [Prompt Security](https://prompt.security/blog/top-10-mcp-security-risks) | Top 10 MCP Security Risks | Tool poisoning, rug pulls, command injection via MCP |
+| [Hudson Rock](https://www.infostealers.com/article/hudson-rock-identifies-real-world-infostealer-infection-targeting-openclaw-configurations/) | Vidar Targets Agent Identity (Feb 13) | First infostealer targeting OpenClaw config dirs (soul.md, device.json) |
+| [Eye Security](https://research.eye.security/log-poisoning-in-openclaw/) | Log Poisoning in OpenClaw (Feb 2026) | WebSocket header injection into agent logs, indirect prompt injection |
+| [Snyk](https://snyk.io/blog/toxicskills-malicious-ai-agent-skills-clawhub/) | ToxicSkills: 36% of Skills Flawed (Feb 5) | 3,984 skills scanned, 534 critical, 76 confirmed malicious payloads |
+| [Bitdefender](https://businessinsights.bitdefender.com/technical-advisory-openclaw-exploitation-enterprise-networks) | Technical Advisory: Enterprise Exploitation | 14 malicious actors, GravityZone telemetry, Shadow AI in enterprises |
+| [SecurityScorecard](https://securityscorecard.com) | STRIKE: 135K Exposed Instances (Feb 9) | 135,000+ instances, 12,812 RCE-exploitable, 1,800 leaking keys |
+| [Antiy CERT](https://gbhackers.com/clawhavoc-infects-openclaws-clawhub/) | ClawHavoc: 1,184 Packages, 12 Accounts | Expanded campaign analysis, automated submission patterns |
+| [Endor Labs](https://www.endorlabs.com/learn/how-ai-sast-traced-data-flows-to-uncover-six-openclaw-vulnerabilities) | AI SAST: 6 Vulnerabilities with PoC | SSRF, missing auth, path traversal discovered via AI SAST |
+| [Adversa AI](https://adversa.ai/blog/secureclaw-open-source-ai-agent-security-for-openclaw-aligned-with-owasp-mitre-frameworks/) | SecureClaw: OWASP-Aligned Security (Feb 18) | New open-source security plugin aligned with OWASP ASI Top 10 |
+| [Kaspersky](https://kaspersky.com) | OpenClaw Risks Analysis (Feb 2026) | Clawdbot/Moltbot key risks for enterprise deployments |
+| [Palo Alto Networks](https://www.paloaltonetworks.com/blog/network-security/why-moltbot-may-signal-ai-crisis/) | Next AI Security Crisis (Feb 2026) | Enterprise security team guidance |
+| [Trend Micro](https://trendmicro.com) | Agentic Assistants Analysis (Feb 2026) | What OpenClaw reveals about agentic assistant security |
 
 ## Related Security Tools
 
@@ -1169,8 +1184,10 @@ Deploy directly into the OpenClaw agent's skill directory for in-agent access:
 ```bash
 # From GitHub
 git clone https://github.com/adibirzu/openclaw-security-monitor.git \
-  ~/.openclaw/workspace/skills/security-monitor
-chmod +x ~/.openclaw/workspace/skills/security-monitor/scripts/*.sh
+  ~/.openclaw/workspace/skills/<skill-dir>
+chmod +x ~/.openclaw/workspace/skills/<skill-dir>/scripts/*.sh
+
+Replace `<skill-dir>` with the actual folder name where the skill is installed (commonly `openclaw-security-monitor` or `security-monitor`).
 ```
 
 The agent auto-discovers skills from `~/.openclaw/workspace/skills/` via SKILL.md frontmatter. After installation, these commands are available in the agent:
@@ -1186,7 +1203,7 @@ The agent auto-discovers skills from `~/.openclaw/workspace/skills/` via SKILL.m
 To verify installation:
 ```bash
 # Check skill is visible
-openclaw skills list | grep security-monitor
+openclaw skills list | grep openclaw-security-monitor
 
 # Test scan through the agent
 # In the agent, type: /security-scan

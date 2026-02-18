@@ -1,9 +1,13 @@
 # Known Malicious ClawHub / GitHub Publishers
-# Sources: Koi Security, VirusTotal, Bloom Security/JFrog, Snyk, OpenSourceMalware
+# Sources: Koi Security, VirusTotal, Bloom Security/JFrog, Snyk, OpenSourceMalware, Antiy CERT
 # Format: username|skill_count|campaign|notes
+# Last updated: 2026-02-18
 
-# ClawHavoc campaign (Koi Security)
-hightower6eu|314|clawhavoc|Primary ClawHavoc publisher, crypto/finance/social lures
+# ClawHavoc campaign (Koi Security + Antiy CERT update)
+# Campaign expanded from 341 to 824+ skills, 1,184 malicious packages across 12 accounts
+hightower6eu|354|clawhavoc|Primary ClawHavoc publisher, crypto/finance/social lures (up from 314)
+sakaen736jih|199|clawhavoc|Automated submissions one every few minutes, second largest operator
+davidsmorais|mixed|clawhavoc-takeover|Established 2016 account - suspected account takeover, mix of clean/malicious
 
 # Bloom Security / JFrog campaign (3 distinct campaigns, 37 skills)
 zaycv|multiple|bloom-campaign|ClawHub + GitHub publisher of malicious skills
@@ -12,6 +16,11 @@ rjnpage|1|bloom-campaign|Published rankaj (.env credential exfiltration via webh
 aslaep123|multiple|bloom-campaign|Published reddit-trends (silent .env exfiltration)
 gpaitai|multiple|bloom-campaign|GitHub account distributing malicious skills
 lvy19811120-gif|multiple|bloom-campaign|GitHub account distributing malicious skills
+
+# Snyk ToxicSkills campaign (Feb 5, 2026)
+# 76 confirmed malicious payloads out of 3,984 scanned skills
+# 8 malicious skills still publicly available at time of disclosure
+clawdhub1|~100|snyk-clawdhub|Active variant of removed clawhub typosquat, drops reverse shells
 
 # Snyk / OpenSourceMalware campaign
 Ddoy233|1|opensourcemalware|GitHub repo openclawcli - Windows infostealer in password-protected ZIP

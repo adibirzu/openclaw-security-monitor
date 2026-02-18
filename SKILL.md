@@ -2,7 +2,7 @@
 name: openclaw-security-monitor
 description: Proactive security monitoring, threat scanning, and auto-remediation for OpenClaw deployments
 tags: [security, scan, remediation, monitoring, threat-detection, hardening]
-version: 3.0.1
+version: 3.1.0
 author: Adrian Birzu
 user-invocable: true
 ---
@@ -13,6 +13,7 @@ user-invocable: true
 Real-time security monitoring with threat intelligence from ClawHavoc research, daily automated scans, web dashboard, and Telegram alerting for OpenClaw.
 
 ## Commands
+Note: Replace `<skill-dir>` with the actual folder name where this skill is installed (commonly `openclaw-security-monitor` or `security-monitor`).
 
 ### /security-scan
 Run a comprehensive 32-point security scan:
@@ -50,7 +51,7 @@ Run a comprehensive 32-point security scan:
 32. MCP server security audit (tool poisoning, prompt injection)
 
 ```bash
-bash ~/.openclaw/workspace/skills/security-monitor/scripts/scan.sh
+bash ~/.openclaw/workspace/skills/<skill-dir>/scripts/scan.sh
 ```
 
 Exit codes: 0=SECURE, 1=WARNINGS, 2=COMPROMISED
@@ -59,14 +60,14 @@ Exit codes: 0=SECURE, 1=WARNINGS, 2=COMPROMISED
 Display a security overview with process trees via witr.
 
 ```bash
-bash ~/.openclaw/workspace/skills/security-monitor/scripts/dashboard.sh
+bash ~/.openclaw/workspace/skills/<skill-dir>/scripts/dashboard.sh
 ```
 
 ### /security-network
 Monitor network connections and check against IOC database.
 
 ```bash
-bash ~/.openclaw/workspace/skills/security-monitor/scripts/network-check.sh
+bash ~/.openclaw/workspace/skills/<skill-dir>/scripts/network-check.sh
 ```
 
 ### /security-remediate
@@ -74,19 +75,19 @@ Scan-driven remediation: runs `scan.sh`, skips CLEAN checks, and executes per-ch
 
 ```bash
 # Full scan + remediate (interactive)
-bash ~/.openclaw/workspace/skills/security-monitor/scripts/remediate.sh
+bash ~/.openclaw/workspace/skills/<skill-dir>/scripts/remediate.sh
 
 # Auto-approve all fixes
-bash ~/.openclaw/workspace/skills/security-monitor/scripts/remediate.sh --yes
+bash ~/.openclaw/workspace/skills/<skill-dir>/scripts/remediate.sh --yes
 
 # Dry run (preview)
-bash ~/.openclaw/workspace/skills/security-monitor/scripts/remediate.sh --dry-run
+bash ~/.openclaw/workspace/skills/<skill-dir>/scripts/remediate.sh --dry-run
 
 # Remediate a single check
-bash ~/.openclaw/workspace/skills/security-monitor/scripts/remediate.sh --check 7 --dry-run
+bash ~/.openclaw/workspace/skills/<skill-dir>/scripts/remediate.sh --check 7 --dry-run
 
 # Run all 32 remediation scripts (skip scan)
-bash ~/.openclaw/workspace/skills/security-monitor/scripts/remediate.sh --all
+bash ~/.openclaw/workspace/skills/<skill-dir>/scripts/remediate.sh --all
 ```
 
 Flags:
@@ -101,7 +102,7 @@ Exit codes: 0=fixes applied, 1=some fixes failed, 2=nothing to fix
 Register a Telegram chat for daily security alerts.
 
 ```bash
-bash ~/.openclaw/workspace/skills/security-monitor/scripts/telegram-setup.sh [chat_id]
+bash ~/.openclaw/workspace/skills/<skill-dir>/scripts/telegram-setup.sh [chat_id]
 ```
 
 ## Web Dashboard
@@ -130,7 +131,7 @@ Threat intelligence files in `ioc/`:
 
 Cron job at 06:00 UTC with Telegram alerts. Install:
 ```bash
-crontab -l | { cat; echo "0 6 * * * $HOME/.openclaw/workspace/skills/security-monitor/scripts/daily-scan-cron.sh"; } | crontab -
+crontab -l | { cat; echo "0 6 * * * $HOME/.openclaw/workspace/skills/<skill-dir>/scripts/daily-scan-cron.sh"; } | crontab -
 ```
 
 ## Threat Coverage
@@ -159,8 +160,8 @@ Based on research from 40+ security sources including:
 ```bash
 # From GitHub
 git clone https://github.com/adibirzu/openclaw-security-monitor.git \
-  ~/.openclaw/workspace/skills/security-monitor
-chmod +x ~/.openclaw/workspace/skills/security-monitor/scripts/*.sh
+  ~/.openclaw/workspace/skills/<skill-dir>
+chmod +x ~/.openclaw/workspace/skills/<skill-dir>/scripts/*.sh
 ```
 
 The OpenClaw agent auto-discovers skills from `~/.openclaw/workspace/skills/` via SKILL.md frontmatter. After cloning, the `/security-scan`, `/security-remediate`, `/security-dashboard`, `/security-network`, and `/security-setup-telegram` commands will be available in the agent.
