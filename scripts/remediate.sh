@@ -190,8 +190,8 @@ else
     # Parse scan output: extract check number, status, and name
     # Format: [N/32] Check name...
     #         STATUS: description
-    declare -A CHECK_STATUS
-    declare -A CHECK_NAME
+    declare -a CHECK_STATUS
+    declare -a CHECK_NAME
     current_num=""
 
     while IFS= read -r line; do
@@ -222,8 +222,8 @@ else
     clean_count=0
     warn_count=0
     crit_count=0
-    for num in $(echo "${!CHECK_STATUS[@]}" | tr ' ' '\n' | sort -n); do
-        case "${CHECK_STATUS[$num]}" in
+    for num in $(seq 1 32); do
+        case "${CHECK_STATUS[$num]:-}" in
             CLEAN) clean_count=$((clean_count + 1)) ;;
             WARNING) warn_count=$((warn_count + 1)) ;;
             CRITICAL) crit_count=$((crit_count + 1)) ;;
@@ -243,12 +243,15 @@ else
     fi
 
     # Run per-check scripts for non-CLEAN checks
-    for num in $(echo "${!CHECK_STATUS[@]}" | tr ' ' '\n' | sort -n); do
-        status="${CHECK_STATUS[$num]}"
+    for num in $(seq 1 32); do
+        status="${CHECK_STATUS[$num]:-}"
         name="${CHECK_NAME[$num]:-check-$num}"
 
         if [ "$status" = "CLEAN" ]; then
             TOTAL_SKIPPED=$((TOTAL_SKIPPED + 1))
+            continue
+        fi
+        if [ -z "$status" ]; then
             continue
         fi
 

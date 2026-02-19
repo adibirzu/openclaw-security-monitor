@@ -40,8 +40,7 @@ log "Scanning skills for blacklisted publishers..."
 
 # Scan SKILL.md and package.json files
 while IFS= read -r -d '' skillfile; do
-    # Skip security-monitor
-    if [[ "$skillfile" == *"security-monitor"* ]]; then
+    if is_self_skill "$skillfile"; then
         continue
     fi
 

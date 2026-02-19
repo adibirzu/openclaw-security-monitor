@@ -5,6 +5,9 @@
 
 OPENCLAW_DIR="${OPENCLAW_HOME:-$HOME/.openclaw}"
 SKILLS_DIR="$OPENCLAW_DIR/workspace/skills"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
+SELF_DIR_NAME="$(basename "$PROJECT_DIR")"
 export PATH="$HOME/.local/bin:/opt/homebrew/opt/node@22/bin:/opt/homebrew/bin:$PATH"
 
 echo "============================================"
@@ -160,7 +163,7 @@ else
 fi
 
 # Cron status
-CRON_EXISTS=$(crontab -l 2>/dev/null | grep -c "security-monitor" || true)
+CRON_EXISTS=$(crontab -l 2>/dev/null | grep -c "$SELF_DIR_NAME" || true)
 if [ "$CRON_EXISTS" -gt 0 ]; then
     echo "Daily scan cron: ACTIVE"
 else

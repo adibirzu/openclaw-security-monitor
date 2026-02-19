@@ -3,8 +3,8 @@
 <!--
   OpenClaw Security Dashboard - LaunchAgent Template
 
-  Before installing, replace __HOME__ with your home directory path:
-    sed "s|__HOME__|$HOME|g" docs/com.openclaw.security-dashboard.plist > ~/Library/LaunchAgents/com.openclaw.security-dashboard.plist
+  Before installing, replace __HOME__ with your home directory path and __SKILL_DIR__ with the skill folder name:
+    sed "s|__HOME__|$HOME|g; s|__SKILL_DIR__|<skill-dir>|g" docs/com.openclaw.security-dashboard.plist > ~/Library/LaunchAgents/com.openclaw.security-dashboard.plist
 
   Then load:
     launchctl load ~/Library/LaunchAgents/com.openclaw.security-dashboard.plist
@@ -16,7 +16,7 @@
     <key>ProgramArguments</key>
     <array>
         <string>/opt/homebrew/opt/node@22/bin/node</string>
-        <string>__HOME__/.openclaw/workspace/skills/security-monitor/dashboard/server.js</string>
+        <string>__HOME__/.openclaw/workspace/skills/__SKILL_DIR__/dashboard/server.js</string>
     </array>
     <key>RunAtLoad</key>
     <true/>
@@ -34,6 +34,6 @@
     <key>StandardErrorPath</key>
     <string>__HOME__/.openclaw/logs/dashboard-stderr.log</string>
     <key>WorkingDirectory</key>
-    <string>__HOME__/.openclaw/workspace/skills/security-monitor/dashboard</string>
+    <string>__HOME__/.openclaw/workspace/skills/__SKILL_DIR__/dashboard</string>
 </dict>
 </plist>

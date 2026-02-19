@@ -42,8 +42,7 @@ log "Scanning skills for sensitive file access..."
 
 # Scan for sensitive file reading
 while IFS= read -r -d '' skillfile; do
-    # Skip security-monitor
-    if [[ "$skillfile" == *"security-monitor"* ]]; then
+    if is_self_skill "$skillfile"; then
         continue
     fi
 
@@ -72,8 +71,7 @@ log "Scanning skills for hardcoded API keys..."
 
 # Scan for hardcoded API keys
 while IFS= read -r -d '' skillfile; do
-    # Skip security-monitor
-    if [[ "$skillfile" == *"security-monitor"* ]]; then
+    if is_self_skill "$skillfile"; then
         continue
     fi
 

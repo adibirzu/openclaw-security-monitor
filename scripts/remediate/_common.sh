@@ -5,6 +5,10 @@
 
 OPENCLAW_DIR="${OPENCLAW_HOME:-$HOME/.openclaw}"
 SKILLS_DIR="$OPENCLAW_DIR/workspace/skills"
+COMMON_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SKILL_ROOT="$(cd "$COMMON_DIR/.." && pwd)"
+SELF_DIR_NAME="$(basename "$SKILL_ROOT")"
+export PATH="$HOME/.local/bin:/opt/homebrew/opt/node@22/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
 LOG_DIR="$OPENCLAW_DIR/logs"
 LOG_FILE="$LOG_DIR/remediation.log"
 TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
@@ -38,6 +42,14 @@ confirm() {
     printf "%s [y/N] " "$prompt"
     read -r answer
     [[ "$answer" =~ ^[Yy] ]]
+}
+
+is_self_skill() {
+    local path="$1"
+    if [[ "$path" == *"/$SELF_DIR_NAME/"* ]] || [[ "$(basename "$path")" == "$SELF_DIR_NAME" ]]; then
+        return 0
+    fi
+    return 1
 }
 
 fix_perms() {

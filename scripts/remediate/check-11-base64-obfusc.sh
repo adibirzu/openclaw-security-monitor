@@ -22,8 +22,7 @@ log "Scanning skills for base64 decode patterns..."
 
 # Scan all script files in skills
 while IFS= read -r -d '' skillfile; do
-    # Skip security-monitor
-    if [[ "$skillfile" == *"security-monitor"* ]]; then
+    if is_self_skill "$skillfile"; then
         continue
     fi
 

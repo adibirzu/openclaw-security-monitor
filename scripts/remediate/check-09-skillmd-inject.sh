@@ -17,10 +17,9 @@ INJECT_PATTERNS=(
 FOUND_ISSUES=0
 MATCHED_FILES=()
 
-# Find all SKILL.md files, excluding security-monitor
+# Find all SKILL.md files, excluding this skill
 while IFS= read -r -d '' skillmd; do
-    # Skip security-monitor
-    if [[ "$skillmd" == *"security-monitor"* ]]; then
+    if is_self_skill "$skillmd"; then
         continue
     fi
 

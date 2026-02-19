@@ -14,17 +14,29 @@ set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 IOC_DIR="$PROJECT_DIR/ioc"
+SELF_DIR_NAME="$(basename "$PROJECT_DIR")"
 LOG_DIR="${OPENCLAW_HOME:-$HOME/.openclaw}/logs"
 UPDATE_LOG="$LOG_DIR/ioc-update.log"
 TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
 # Default upstream repo for IOC updates
-GITHUB_REPO="${2:-https://raw.githubusercontent.com/adibirzu/openclaw-security-monitor/main/ioc}"
-
+GITHUB_REPO="https://raw.githubusercontent.com/adibirzu/openclaw-security-monitor/main/ioc"
 CHECK_ONLY=false
-if [ "${1:-}" = "--check-only" ]; then
-    CHECK_ONLY=true
-fi
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --check-only)
+            CHECK_ONLY=true
+            ;;
+        --github-repo)
+            shift
+            if [ -n "${1:-}" ]; then
+                GITHUB_REPO="$1"
+            fi
+            ;;
+    esac
+    shift
+done
 
 mkdir -p "$LOG_DIR" "$IOC_DIR"
 
@@ -136,7 +148,7 @@ if [ -d "$SKILLS_DIR" ]; then
         PATTERNS=$(grep -v '^#' "$IOC_DIR/malicious-skill-patterns.txt" | grep -v '^$' | cut -d'|' -f1)
         for skilldir in "$SKILLS_DIR"/*/; do
             SKILL_NAME=$(basename "$skilldir")
-            [ "$SKILL_NAME" = "security-monitor" ] && continue
+            [ "$SKILL_NAME" = "$SELF_DIR_NAME" ] && continue
             for pattern in $PATTERNS; do
                 if echo "$SKILL_NAME" | grep -qiE "$pattern" 2>/dev/null; then
                     echo "  WARNING: Skill '$SKILL_NAME' matches malicious pattern: $pattern"
@@ -151,7 +163,7 @@ if [ -d "$SKILLS_DIR" ]; then
     if [ -f "$IOC_DIR/malicious-publishers.txt" ]; then
         PUBLISHERS=$(grep -v '^#' "$IOC_DIR/malicious-publishers.txt" | grep -v '^$' | cut -d'|' -f1)
         for pub in $PUBLISHERS; do
-            FOUND=$(grep -rl --exclude-dir=security-monitor "$pub" "$SKILLS_DIR" 2>/dev/null || true)
+            FOUND=$(grep -rl --exclude-dir="$SELF_DIR_NAME" "$pub" "$SKILLS_DIR" 2>/dev/null || true)
             if [ -n "$FOUND" ]; then
                 echo "  CRITICAL: Known malicious publisher '$pub' found in: $FOUND"
                 THREATS_FOUND=$((THREATS_FOUND + 1))
@@ -163,7 +175,7 @@ if [ -d "$SKILLS_DIR" ]; then
     if [ -f "$IOC_DIR/file-hashes.txt" ]; then
         HASHES=$(grep -v '^#' "$IOC_DIR/file-hashes.txt" | grep -v '^$' | cut -d'|' -f1)
         for hash in $HASHES; do
-            FOUND=$(find "$SKILLS_DIR" -type f -not -path "*/security-monitor/*" -exec shasum -a 256 {} \; 2>/dev/null | grep "$hash" || true)
+            FOUND=$(find "$SKILLS_DIR" -type f -not -path "*/$SELF_DIR_NAME/*" -exec shasum -a 256 {} \; 2>/dev/null | grep "$hash" || true)
             if [ -n "$FOUND" ]; then
                 echo "  CRITICAL: Known malicious file hash found: $FOUND"
                 THREATS_FOUND=$((THREATS_FOUND + 1))

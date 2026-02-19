@@ -25,8 +25,7 @@ log "Scanning skills for binary download patterns..."
 
 # Scan all files in skills
 while IFS= read -r -d '' skillfile; do
-    # Skip security-monitor
-    if [[ "$skillfile" == *"security-monitor"* ]]; then
+    if is_self_skill "$skillfile"; then
         continue
     fi
 

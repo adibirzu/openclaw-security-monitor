@@ -109,60 +109,54 @@ fi
 log "─────────────────────────────────────────"
 
 # Provide guidance
-guidance << 'EOF'
-Skill integrity check detected changes!
-
-Modified skills may indicate:
-- Legitimate skill updates
-- Manual edits you made
-- Tampering or malware injection
-
-RECOMMENDED ACTIONS:
-
-1. For MODIFIED skills (unexpected changes):
-   Review what changed:
-
-   openclaw skill show <skill-name>
-
-   If suspicious, reinstall from ClawHub:
-
-EOF
-
-for skill in "${CHANGED_SKILLS[@]}"; do
-  echo "   openclaw skill rm $skill && openclaw skill add $skill"
-done >> "$LOG_FILE"
-
-guidance << 'EOF'
-
-2. For NEW skills:
-   Verify you intentionally installed them:
-
-   openclaw skill list
-
-   If unrecognized, remove immediately:
-
-EOF
-
-for skill in "${ADDED_SKILLS[@]}"; do
-  echo "   openclaw skill rm $skill"
-done >> "$LOG_FILE"
-
-guidance << 'EOF'
-
-3. Update your baseline after verification:
-
-   cp $LOG_DIR/skill-hashes.sha256 $LOG_DIR/skill-hashes.sha256.prev
-
-4. For critical skills, verify against ClawHub:
-   - Check skill source repository
-   - Compare checksums with official versions
-   - Review recent commits for unauthorized changes
-
-5. If tampering is suspected:
-   - Run full security scan
-   - Check system logs for unauthorized access
-   - Review all skills for suspicious code
-   - Consider removing all skills and reinstalling
-EOF
+{
+  echo "Skill integrity check detected changes!"
+  echo ""
+  echo "Modified skills may indicate:"
+  echo "- Legitimate skill updates"
+  echo "- Manual edits you made"
+  echo "- Tampering or malware injection"
+  echo ""
+  echo "RECOMMENDED ACTIONS:"
+  echo ""
+  echo "1. For MODIFIED skills (unexpected changes):"
+  echo "   Review what changed:"
+  echo ""
+  echo "   openclaw skill show <skill-name>"
+  echo ""
+  echo "   If suspicious, reinstall from ClawHub:"
+  if [ ${#CHANGED_SKILLS[@]} -gt 0 ]; then
+    for skill in "${CHANGED_SKILLS[@]}"; do
+      echo "   openclaw skill rm $skill && openclaw skill add $skill"
+    done
+  fi
+  echo ""
+  echo "2. For NEW skills:"
+  echo "   Verify you intentionally installed them:"
+  echo ""
+  echo "   openclaw skill list"
+  echo ""
+  echo "   If unrecognized, remove immediately:"
+  if [ ${#ADDED_SKILLS[@]} -gt 0 ]; then
+    for skill in "${ADDED_SKILLS[@]}"; do
+      echo "   openclaw skill rm $skill"
+    done
+  fi
+  echo ""
+  echo "3. Update your baseline after verification:"
+  echo ""
+  echo "   cp $LOG_DIR/skill-hashes.sha256 $LOG_DIR/skill-hashes.sha256.prev"
+  echo ""
+  echo "4. For critical skills, verify against ClawHub:"
+  echo "   - Check skill source repository"
+  echo "   - Compare checksums with official versions"
+  echo "   - Review recent commits for unauthorized changes"
+  echo ""
+  echo "5. If tampering is suspected:"
+  echo "   - Run full security scan"
+  echo "   - Check system logs for unauthorized access"
+  echo "   - Review all skills for suspicious code"
+  echo "   - Consider removing all skills and reinstalling"
+} | guidance
 
 exit 1

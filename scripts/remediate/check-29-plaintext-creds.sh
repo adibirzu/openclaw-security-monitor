@@ -11,23 +11,33 @@ fi
 
 log "Scanning $OPENCLAW_DIR for credential patterns..."
 
-# Define credential patterns to search for
-declare -A PATTERNS=(
-    ["OpenAI API Key"]="sk-[A-Za-z0-9]{32,}"
-    ["AWS Access Key"]="AKIA[0-9A-Z]{16}"
-    ["GitHub Token"]="ghp_[A-Za-z0-9]{36,}"
-    ["Slack Token"]="xoxb-[0-9]{10,13}-[0-9]{10,13}-[A-Za-z0-9]{24,}"
-    ["GitLab Token"]="glpat-[A-Za-z0-9_\-]{20,}"
-    ["Anthropic API Key"]="sk-ant-[A-Za-z0-9\-]{32,}"
-    ["Generic API Key"]="api[_-]?key['\"]?\s*[:=]\s*['\"][A-Za-z0-9]{20,}['\"]"
+# Define credential patterns to search for (Bash 3.2 compatible)
+PATTERN_NAMES=(
+    "OpenAI API Key"
+    "AWS Access Key"
+    "GitHub Token"
+    "Slack Token"
+    "GitLab Token"
+    "Anthropic API Key"
+    "Generic API Key"
+)
+PATTERN_VALUES=(
+    "sk-[A-Za-z0-9]{32,}"
+    "AKIA[0-9A-Z]{16}"
+    "ghp_[A-Za-z0-9]{36,}"
+    "xoxb-[0-9]{10,13}-[0-9]{10,13}-[A-Za-z0-9]{24,}"
+    "glpat-[A-Za-z0-9_\\-]{20,}"
+    "sk-ant-[A-Za-z0-9\\-]{32,}"
+    "api[_-]?key['\"]?\\s*[:=]\\s*['\"][A-Za-z0-9]{20,}['\"]"
 )
 
 CREDS_FOUND=0
 declare -a AFFECTED_FILES=()
 
 # Search for patterns in config files
-for PATTERN_NAME in "${!PATTERNS[@]}"; do
-    PATTERN="${PATTERNS[$PATTERN_NAME]}"
+for idx in "${!PATTERN_NAMES[@]}"; do
+    PATTERN_NAME="${PATTERN_NAMES[$idx]}"
+    PATTERN="${PATTERN_VALUES[$idx]}"
 
     # Search in common config files
     while IFS= read -r FILE; do
@@ -42,16 +52,17 @@ for PATTERN_NAME in "${!PATTERNS[@]}"; do
 done
 
 # Remove duplicates from affected files
-UNIQUE_FILES=($(printf '%s\n' "${AFFECTED_FILES[@]}" | sort -u))
+UNIQUE_LIST=$(printf '%s\n' "${AFFECTED_FILES[@]}" | sort -u | sed '/^$/d' | sed 's/^/  - /')
+UNIQUE_COUNT=$(printf '%s\n' "${AFFECTED_FILES[@]}" | sort -u | sed '/^$/d' | wc -l | tr -d ' ')
 
 if [[ $CREDS_FOUND -gt 0 ]]; then
-    log "Found $CREDS_FOUND potential credential(s) in ${#UNIQUE_FILES[@]} file(s)"
+    log "Found $CREDS_FOUND potential credential(s) in ${UNIQUE_COUNT} file(s)"
 
     guidance "Plaintext Credentials Detected" \
         "Found $CREDS_FOUND potential plaintext credential(s) in configuration files." \
         "" \
         "AFFECTED FILES:" \
-        "$(printf '  - %s\n' "${UNIQUE_FILES[@]}")" \
+        "$UNIQUE_LIST" \
         "" \
         "IMMEDIATE ACTIONS REQUIRED:" \
         "1. ROTATE all exposed credentials immediately" \
