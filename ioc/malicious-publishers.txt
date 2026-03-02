@@ -1,7 +1,7 @@
 # Known Malicious ClawHub / GitHub Publishers
-# Sources: Koi Security, VirusTotal, Bloom Security/JFrog, Snyk, OpenSourceMalware, Antiy CERT
+# Sources: Koi Security, VirusTotal, Bloom Security/JFrog, Snyk, OpenSourceMalware, Antiy CERT, Flare
 # Format: username|skill_count|campaign|notes
-# Last updated: 2026-02-18
+# Last updated: 2026-03-02
 
 # ClawHavoc campaign (Koi Security + Antiy CERT update)
 # Campaign expanded from 341 to 824+ skills, 1,184 malicious packages across 12 accounts

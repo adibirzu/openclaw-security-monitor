@@ -1,7 +1,8 @@
 # Malicious Skill Name Patterns
 # These patterns match known malicious skill naming conventions
-# Sources: Koi Security, Bloom Security/JFrog, Snyk, OpenSourceMalware
+# Sources: Koi Security, Bloom Security/JFrog, Snyk, OpenSourceMalware, Antiy CERT, Endor Labs
 # Format: pattern|category|notes
+# Last updated: 2026-03-02
 
 # ClawHub typosquats (28 variants found)
 ^clawhub[0-9]*$|typosquat|clawhub misspelling

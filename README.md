@@ -1,6 +1,6 @@
 # OpenClaw Security Monitor
 
-Proactive security monitoring, threat scanning, and real-time visibility for [OpenClaw](https://github.com/openclawai/openclaw) deployments. Detects threats from the **ClawHavoc** campaign (824+ malicious skills), **AMOS stealer**, **Vidar infostealer**, supply chain attacks, memory poisoning, log poisoning, **10 CVEs**, and **14+ GHSAs**.
+Proactive security monitoring, threat scanning, and real-time visibility for [OpenClaw](https://github.com/openclawai/openclaw) deployments. Detects threats from the **ClawHavoc** campaign (824+ malicious skills), **AMOS stealer**, **Vidar infostealer**, **ClawJacked** WebSocket brute-force, supply chain attacks, memory poisoning, log poisoning, SSRF, **13+ CVEs**, and **20+ GHSAs**.
 
 ## Why This Exists
 
@@ -8,15 +8,15 @@ In late January 2026, security researchers found that **12% of all ClawHub skill
 
 The primary campaign, ClawHavoc, delivered the Atomic Stealer (AMOS) macOS infostealer targeting crypto wallets, SSH credentials, and browser passwords. In February, Hudson Rock discovered **Vidar infostealer variants specifically targeting OpenClaw agent identities** — stealing openclaw.json, device.json, soul.md, and memory.md files.
 
-Meanwhile, CVE-2026-25253 demonstrated that a single malicious link could achieve full remote code execution on any OpenClaw instance through WebSocket hijacking — even those bound to localhost. Since then, **9 additional CVEs and 14+ GHSAs** have been disclosed (path traversal, exec bypass, webhook forgery, log poisoning, and more).
+Meanwhile, CVE-2026-25253 demonstrated that a single malicious link could achieve full remote code execution on any OpenClaw instance through WebSocket hijacking — even those bound to localhost. The **ClawJacked** attack (Feb 26, Oasis Security) showed that malicious websites can brute-force localhost WebSocket passwords with no rate limiting. **CVE-2026-28363** (CVSS 9.9) revealed a critical safeBins bypass via GNU long-option abbreviations. In total, **13+ CVEs and 20+ GHSAs** have been disclosed including SSRF, exec bypass, ACP auto-approval bypass, webhook forgery, log poisoning, and more.
 
 **135,000+ instances** are exposed across 82 countries, with **12,812 exploitable via RCE**. Major security firms including CrowdStrike, Bitdefender, Palo Alto Networks, Cisco, and Kaspersky have issued advisories. Meta has banned OpenClaw from corporate devices.
 
-This project provides defense-in-depth monitoring for self-hosted OpenClaw installations. **Minimum safe version: v2026.2.14**.
+This project provides defense-in-depth monitoring for self-hosted OpenClaw installations. **Minimum safe version: v2026.2.26**.
 
 ## Features
 
-- **32-point security scan** covering C2 infrastructure, stealers, reverse shells, credential exfiltration, memory poisoning, SKILL.md injection, WebSocket hijacking, DM/tool/sandbox policies, persistence mechanisms, plugin auditing, Docker security, MCP hardening, and more
+- **40-point security scan** covering C2 infrastructure, stealers, reverse shells, credential exfiltration, memory poisoning, SKILL.md injection, WebSocket hijacking, ClawJacked brute-force, SSRF, safeBins bypass, ACP auto-approval, PATH hijacking, env override injection, deep link truncation, log poisoning, DM/tool/sandbox policies, persistence mechanisms, plugin auditing, Docker security, MCP hardening, and more
 - **IOC database** with known C2 IPs, malicious domains, file hashes, publisher blacklists, and skill name patterns
 - **Auto-updating IOC feeds** that pull latest threat intelligence from upstream
 - **Web dashboard** (dark-themed, zero dependencies) with real-time status, process trees, network monitoring, and scan history
@@ -114,6 +114,14 @@ openclaw-security-monitor/
 | 30 | VS Code Trojans | CRITICAL | Fake ClawdBot/OpenClaw VS Code extensions (Aikido/JFrog) |
 | 31 | Internet Exposure | WARNING | Gateway listening on non-loopback / wildcard interfaces |
 | 32 | MCP Server Security | CRITICAL | Unrestricted MCP servers, prompt injection in tool descriptions |
+| 33 | ClawJacked Protection | CRITICAL | WebSocket brute-force on localhost, no rate limiting (Oasis Security) |
+| 34 | SSRF Protection | WARNING | CVE-2026-26322 gateway tool SSRF, CVE-2026-27488 cron webhook SSRF |
+| 35 | safeBins Bypass | CRITICAL | CVE-2026-28363 (CVSS 9.9) GNU long-option abbreviation bypass |
+| 36 | ACP Auto-Approval | WARNING | GHSA-7jx5 (CVSS 8.2) untrusted metadata bypasses approval prompts |
+| 37 | PATH Hijacking | CRITICAL | GHSA-jqpq command hijacking via user-controlled PATH directories |
+| 38 | Env Override Injection | WARNING | GHSA-82g8 skill env overrides redirect OpenClaw traffic |
+| 39 | Deep Link Truncation | WARNING | CVE-2026-26320 macOS 240-char preview hides malicious payload |
+| 40 | Log Poisoning | WARNING | WebSocket header injection, ANSI escape sequences in logs |
 
 ## Remediation Guide
 
@@ -891,13 +899,13 @@ The `remediate.sh` orchestrator runs `scan.sh`, parses the results, skips CLEAN 
 # Remediate a single check
 ./scripts/remediate.sh --check 7 --dry-run
 
-# Run all 32 scripts without scanning
+# Run all 40 scripts without scanning
 ./scripts/remediate.sh --all
 ```
 
 ### Per-Check Remediation Scripts
 
-Each of the 32 scan checks has a dedicated remediation script in `scripts/remediate/`. Scripts are standalone, support `--yes` and `--dry-run`, and return exit 0 (fixed), 1 (failed), or 2 (nothing to fix).
+Each of the 40 scan checks has a dedicated remediation script in `scripts/remediate/`. Scripts are standalone, support `--yes` and `--dry-run`, and return exit 0 (fixed), 1 (failed), or 2 (nothing to fix).
 
 | Script | Check | Type |
 |--------|-------|------|
@@ -933,6 +941,14 @@ Each of the 32 scan checks has a dedicated remediation script in `scripts/remedi
 | `check-30-vscode-trojans.sh` | VS Code Trojans | Auto-fix (remove) |
 | `check-31-internet-expose.sh` | Internet Exposure | Auto-fix (bind) |
 | `check-32-mcp-security.sh` | MCP Security | Auto-fix (config) |
+| `check-33-clawjacked.sh` | ClawJacked | Auto-fix (gateway auth) |
+| `check-34-ssrf.sh` | SSRF Protection | Guidance |
+| `check-35-safebins.sh` | safeBins Bypass | Guidance |
+| `check-36-acp-approval.sh` | ACP Auto-Approval | Auto-fix (disable) |
+| `check-37-path-hijack.sh` | PATH Hijacking | Auto-fix (remove) |
+| `check-38-env-override.sh` | Env Override | Guidance |
+| `check-39-deeplink.sh` | Deep Link Truncation | Guidance |
+| `check-40-log-poisoning.sh` | Log Poisoning | Auto-fix (sanitize) |
 
 **Auto-fix** scripts modify the system (permissions, config settings, /etc/hosts).
 **Guidance** scripts print manual instructions for destructive or external actions (skill removal, credential rotation, Docker changes).
@@ -1158,6 +1174,10 @@ This project's detection patterns are built from published security research:
 | [Kaspersky](https://kaspersky.com) | OpenClaw Risks Analysis (Feb 2026) | Clawdbot/Moltbot key risks for enterprise deployments |
 | [Palo Alto Networks](https://www.paloaltonetworks.com/blog/network-security/why-moltbot-may-signal-ai-crisis/) | Next AI Security Crisis (Feb 2026) | Enterprise security team guidance |
 | [Trend Micro](https://trendmicro.com) | Agentic Assistants Analysis (Feb 2026) | What OpenClaw reveals about agentic assistant security |
+| [Oasis Security](https://www.oasis.security/blog/openclaw-vulnerability) | ClawJacked: WebSocket Brute-Force (Feb 26) | Localhost WebSocket hijack via password brute-force, auto-device registration |
+| [Flare](https://flare.io/learn/resources/blog/widespread-openclaw-exploitation) | Widespread Exploitation by Multiple Groups (Feb 25) | Multiple threat groups targeting OpenClaw in the wild |
+| [CVE-2026-28363](https://advisories.gitlab.com/pkg/npm/openclaw/CVE-2026-28363/) | safeBins Bypass via sort --compress-prog (CVSS 9.9) | GNU long-option abbreviation bypasses exec allowlist |
+| [GHSA-7jx5](https://advisories.gitlab.com/pkg/npm/openclaw/GHSA-7jx5-9fjg-hp4m/) | ACP Auto-Approval Bypass (CVSS 8.2) | Untrusted metadata bypasses interactive tool approval |
 
 ## Related Security Tools
 

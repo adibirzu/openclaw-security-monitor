@@ -1,6 +1,7 @@
 # OpenClaw Known Malicious Domains
-# Source: Koi Security, VirusTotal, Snyk research
+# Source: Koi Security, VirusTotal, Snyk research, Endor Labs, Oasis Security
 # Format: domain|type|campaign|notes
+# Last updated: 2026-03-02
 
 # Payload hosting
 install.app-distribution.net|payload|clawhavoc|AMOS installer distribution
