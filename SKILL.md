@@ -2,7 +2,7 @@
 name: openclaw-security-monitor
 description: Proactive security monitoring, threat scanning, and auto-remediation for OpenClaw deployments
 tags: [security, scan, remediation, monitoring, threat-detection, hardening]
-version: 3.4.0
+version: 3.5.0
 author: Adrian Birzu
 user-invocable: true
 ---
@@ -16,7 +16,7 @@ Real-time security monitoring with threat intelligence from ClawHavoc research, 
 Note: Replace `<skill-dir>` with the actual folder name where this skill is installed (commonly `openclaw-security-monitor` or `security-monitor`).
 
 ### /security-scan
-Run a comprehensive 40-point security scan:
+Run a comprehensive 48-point security scan:
 1. Known C2 IPs (ClawHavoc: 91.92.242.x, 95.92.242.x, 54.91.154.110)
 2. AMOS stealer / AuthTool markers
 3. Reverse shells & backdoors (bash, python, perl, ruby, php, lua)
@@ -57,6 +57,14 @@ Run a comprehensive 40-point security scan:
 38. Skill env override host injection (GHSA-82g8-464f-2mv7)
 39. macOS deep link truncation (CVE-2026-26320)
 40. Log poisoning / WebSocket header injection
+41. Browser Relay CDP unauthenticated access (CVE-2026-28458, CVSS 7.5)
+42. Browser control API path traversal (CVE-2026-28462, CVSS 7.5)
+43. Exec-approvals shell expansion bypass (CVE-2026-28463)
+44. Approval field injection / exec gating bypass (CVE-2026-28466)
+45. Sandbox browser bridge auth bypass (CVE-2026-28468)
+46. Webhook DoS — oversized payloads (CVE-2026-28478)
+47. TAR archive path traversal (CVE-2026-28453)
+48. fetchWithGuard memory exhaustion DoS (CVE-2026-29609, CVSS 7.5)
 
 ```bash
 bash ~/.openclaw/workspace/skills/<skill-dir>/scripts/scan.sh
@@ -79,7 +87,7 @@ bash ~/.openclaw/workspace/skills/<skill-dir>/scripts/network-check.sh
 ```
 
 ### /security-remediate
-Scan-driven remediation: runs `scan.sh`, skips CLEAN checks, and executes per-check remediation scripts for each WARNING/CRITICAL finding. Includes 40 individual scripts covering file permissions, exfiltration domain blocking, tool deny lists, gateway hardening, sandbox configuration, credential auditing, ClawJacked protection, SSRF hardening, PATH hijacking cleanup, log poisoning remediation, and more.
+Scan-driven remediation: runs `scan.sh`, skips CLEAN checks, and executes per-check remediation scripts for each WARNING/CRITICAL finding. Includes 48 individual scripts covering file permissions, exfiltration domain blocking, tool deny lists, gateway hardening, sandbox configuration, credential auditing, ClawJacked protection, SSRF hardening, PATH hijacking cleanup, log poisoning remediation, and more.
 
 ```bash
 # Full scan + remediate (interactive)
@@ -94,7 +102,7 @@ bash ~/.openclaw/workspace/skills/<skill-dir>/scripts/remediate.sh --dry-run
 # Remediate a single check
 bash ~/.openclaw/workspace/skills/<skill-dir>/scripts/remediate.sh --check 7 --dry-run
 
-# Run all 40 remediation scripts (skip scan)
+# Run all 48 remediation scripts (skip scan)
 bash ~/.openclaw/workspace/skills/<skill-dir>/scripts/remediate.sh --all
 ```
 
@@ -102,7 +110,7 @@ Flags:
 - `--yes` / `-y` — Skip confirmation prompts (auto-approve all fixes)
 - `--dry-run` — Show what would be fixed without making changes
 - `--check N` — Run remediation for check N only (skip scan)
-- `--all` — Run all 40 remediation scripts without scanning first
+- `--all` — Run all 48 remediation scripts without scanning first
 
 Exit codes: 0=fixes applied, 1=some fixes failed, 2=nothing to fix
 

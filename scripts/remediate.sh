@@ -9,7 +9,7 @@
 #   ./remediate.sh --dry-run          # Show what would be fixed without changing anything
 #   ./remediate.sh --check N          # Run remediation for check N only (skip scan)
 #   ./remediate.sh --check N --dry-run # Dry-run a single check
-#   ./remediate.sh --all              # Run all 40 remediation scripts (skip scan)
+#   ./remediate.sh --all              # Run all 48 remediation scripts (skip scan)
 #
 # Exit codes: 0=fixes applied, 1=some fixes failed, 2=nothing to fix
 set -uo pipefail
@@ -168,8 +168,8 @@ fi
 
 # --- Run all mode (no scan) ---
 if $RUN_ALL; then
-    echo "Running all 40 remediation scripts..."
-    for i in $(seq 1 40); do
+    echo "Running all 48 remediation scripts..."
+    for i in $(seq 1 48); do
         run_check_script "$i" "ALL" "check-$i"
     done
 else
@@ -222,7 +222,7 @@ else
     clean_count=0
     warn_count=0
     crit_count=0
-    for num in $(seq 1 40); do
+    for num in $(seq 1 48); do
         case "${CHECK_STATUS[$num]:-}" in
             CLEAN) clean_count=$((clean_count + 1)) ;;
             WARNING) warn_count=$((warn_count + 1)) ;;
@@ -243,7 +243,7 @@ else
     fi
 
     # Run per-check scripts for non-CLEAN checks
-    for num in $(seq 1 40); do
+    for num in $(seq 1 48); do
         status="${CHECK_STATUS[$num]:-}"
         name="${CHECK_NAME[$num]:-check-$num}"
 

@@ -2,7 +2,7 @@
 # These patterns match known malicious skill naming conventions
 # Sources: Koi Security, Bloom Security/JFrog, Snyk, OpenSourceMalware, Antiy CERT, Endor Labs
 # Format: pattern|category|notes
-# Last updated: 2026-03-02
+# Last updated: 2026-03-06
 
 # ClawHub typosquats (28 variants found)
 ^clawhub[0-9]*$|typosquat|clawhub misspelling
@@ -74,3 +74,14 @@ virus-scan|security-lure|Fake antivirus/scanning tools
 # WhatsApp integration lures
 whatsapp-|messaging-lure|WhatsApp integration lures
 telegram-bot|messaging-lure|Telegram bot lures
+
+# Fake installer lures (Huntress, Mar 2026 - Bing AI search poisoning)
+openclaw-install|fake-installer|Fake OpenClaw installer (GhostSocks/Vidar)
+openclaw-setup|fake-installer|Fake setup scripts
+openclaw-windows|fake-installer|Windows-specific fake installer
+openclaw-mac|fake-installer|macOS-specific fake installer
+
+# Voice-call/telephony lures (post CVE-2026-28446 wave)
+voice-call|voice-lure|Voice/telephony integration lures
+voice-agent|voice-lure|Voice agent lures
+phone-|voice-lure|Phone integration lures

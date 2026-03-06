@@ -1,7 +1,7 @@
 # Known Malicious ClawHub / GitHub Publishers
 # Sources: Koi Security, VirusTotal, Bloom Security/JFrog, Snyk, OpenSourceMalware, Antiy CERT, Flare
 # Format: username|skill_count|campaign|notes
-# Last updated: 2026-03-02
+# Last updated: 2026-03-06
 
 # ClawHavoc campaign (Koi Security + Antiy CERT update)
 # Campaign expanded from 341 to 824+ skills, 1,184 malicious packages across 12 accounts
@@ -27,3 +27,8 @@ Ddoy233|1|opensourcemalware|GitHub repo openclawcli - Windows infostealer in pas
 
 # GitHub accounts hosting malicious payloads
 hedefbari|1|clawhavoc|GitHub hosting openclaw-agent.zip
+
+# Fake OpenClaw installer campaign (Huntress, Feb-Mar 2026)
+# Bing AI search poisoning promoted these repos to top results
+# Distributed GhostSocks proxy malware + Vidar stealer via Stealth Packer
+openclaw-installer|fake-repo|ghostsocks-vidar|GitHub fake installer repo (removed Feb 10, Huntress)

@@ -1,6 +1,6 @@
 # OpenClaw Security Monitor
 
-Proactive security monitoring, threat scanning, and real-time visibility for [OpenClaw](https://github.com/openclawai/openclaw) deployments. Detects threats from the **ClawHavoc** campaign (824+ malicious skills), **AMOS stealer**, **Vidar infostealer**, **ClawJacked** WebSocket brute-force, supply chain attacks, memory poisoning, log poisoning, SSRF, **13+ CVEs**, and **20+ GHSAs**.
+Proactive security monitoring, threat scanning, and real-time visibility for [OpenClaw](https://github.com/openclawai/openclaw) deployments. Detects threats from the **ClawHavoc** campaign (824+ malicious skills), **AMOS stealer**, **Vidar infostealer**, **GhostSocks** proxy malware, **ClawJacked** WebSocket brute-force, supply chain attacks, memory poisoning, log poisoning, browser relay hijacking, TAR traversal, SSRF, **25+ CVEs**, and **30+ GHSAs**.
 
 ## Why This Exists
 
@@ -16,7 +16,7 @@ This project provides defense-in-depth monitoring for self-hosted OpenClaw insta
 
 ## Features
 
-- **40-point security scan** covering C2 infrastructure, stealers, reverse shells, credential exfiltration, memory poisoning, SKILL.md injection, WebSocket hijacking, ClawJacked brute-force, SSRF, safeBins bypass, ACP auto-approval, PATH hijacking, env override injection, deep link truncation, log poisoning, DM/tool/sandbox policies, persistence mechanisms, plugin auditing, Docker security, MCP hardening, and more
+- **48-point security scan** covering C2 infrastructure, stealers, reverse shells, credential exfiltration, memory poisoning, SKILL.md injection, WebSocket hijacking, ClawJacked brute-force, SSRF, safeBins bypass, ACP auto-approval, PATH hijacking, env override injection, deep link truncation, log poisoning, DM/tool/sandbox policies, persistence mechanisms, plugin auditing, Docker security, MCP hardening, and more
 - **IOC database** with known C2 IPs, malicious domains, file hashes, publisher blacklists, and skill name patterns
 - **Auto-updating IOC feeds** that pull latest threat intelligence from upstream
 - **Web dashboard** (dark-themed, zero dependencies) with real-time status, process trees, network monitoring, and scan history
@@ -122,6 +122,14 @@ openclaw-security-monitor/
 | 38 | Env Override Injection | WARNING | GHSA-82g8 skill env overrides redirect OpenClaw traffic |
 | 39 | Deep Link Truncation | WARNING | CVE-2026-26320 macOS 240-char preview hides malicious payload |
 | 40 | Log Poisoning | WARNING | WebSocket header injection, ANSI escape sequences in logs |
+| 41 | Browser Relay CDP | CRITICAL | CVE-2026-28458 (CVSS 7.5) unauthenticated /cdp WebSocket access |
+| 42 | Browser Control Traversal | CRITICAL | CVE-2026-28462 (CVSS 7.5) path traversal in trace/download API |
+| 43 | Shell Expansion Bypass | CRITICAL | CVE-2026-28463 exec-approvals validate pre-expansion, run post-expansion |
+| 44 | Approval Field Injection | CRITICAL | CVE-2026-28466 unsanitized approval fields bypass exec gating |
+| 45 | Sandbox Bridge Auth | WARNING | CVE-2026-28468 sandbox browser bridge accepts unauthenticated requests |
+| 46 | Webhook DoS | WARNING | CVE-2026-28478 unbounded body parsing enables memory exhaustion |
+| 47 | TAR Path Traversal | CRITICAL | CVE-2026-28453 malicious TAR archives escape extraction boundary |
+| 48 | fetchWithGuard DoS | WARNING | CVE-2026-29609 (CVSS 7.5) memory exhaustion via oversized responses |
 
 ## Remediation Guide
 
@@ -899,13 +907,13 @@ The `remediate.sh` orchestrator runs `scan.sh`, parses the results, skips CLEAN 
 # Remediate a single check
 ./scripts/remediate.sh --check 7 --dry-run
 
-# Run all 40 scripts without scanning
+# Run all 48 scripts without scanning
 ./scripts/remediate.sh --all
 ```
 
 ### Per-Check Remediation Scripts
 
-Each of the 40 scan checks has a dedicated remediation script in `scripts/remediate/`. Scripts are standalone, support `--yes` and `--dry-run`, and return exit 0 (fixed), 1 (failed), or 2 (nothing to fix).
+Each of the 48 scan checks has a dedicated remediation script in `scripts/remediate/`. Scripts are standalone, support `--yes` and `--dry-run`, and return exit 0 (fixed), 1 (failed), or 2 (nothing to fix).
 
 | Script | Check | Type |
 |--------|-------|------|
@@ -949,6 +957,14 @@ Each of the 40 scan checks has a dedicated remediation script in `scripts/remedi
 | `check-38-env-override.sh` | Env Override | Guidance |
 | `check-39-deeplink.sh` | Deep Link Truncation | Guidance |
 | `check-40-log-poisoning.sh` | Log Poisoning | Auto-fix (sanitize) |
+| `check-41-cdp-relay.sh` | Browser Relay CDP | Auto-fix (disable) |
+| `check-42-browser-traversal.sh` | Browser Control Traversal | Guidance |
+| `check-43-shell-expansion.sh` | Shell Expansion Bypass | Guidance |
+| `check-44-approval-inject.sh` | Approval Injection | Guidance |
+| `check-45-sandbox-bridge.sh` | Sandbox Bridge Auth | Guidance |
+| `check-46-webhook-dos.sh` | Webhook DoS | Guidance |
+| `check-47-tar-traversal.sh` | TAR Path Traversal | Guidance |
+| `check-48-fetch-dos.sh` | fetchWithGuard DoS | Guidance |
 
 **Auto-fix** scripts modify the system (permissions, config settings, /etc/hosts).
 **Guidance** scripts print manual instructions for destructive or external actions (skill removal, credential rotation, Docker changes).
@@ -1178,6 +1194,16 @@ This project's detection patterns are built from published security research:
 | [Flare](https://flare.io/learn/resources/blog/widespread-openclaw-exploitation) | Widespread Exploitation by Multiple Groups (Feb 25) | Multiple threat groups targeting OpenClaw in the wild |
 | [CVE-2026-28363](https://advisories.gitlab.com/pkg/npm/openclaw/CVE-2026-28363/) | safeBins Bypass via sort --compress-prog (CVSS 9.9) | GNU long-option abbreviation bypasses exec allowlist |
 | [GHSA-7jx5](https://advisories.gitlab.com/pkg/npm/openclaw/GHSA-7jx5-9fjg-hp4m/) | ACP Auto-Approval Bypass (CVSS 8.2) | Untrusted metadata bypasses interactive tool approval |
+| [CVE-2026-28446](https://dev.to/tiamatenity/cve-2026-28446-cvss-98-openclaw-voice-extension-rce-what-you-need-to-know-n2i) | Voice-Call Extension RCE (CVSS 9.8) | Pre-auth RCE via crafted audio payload, 42K instances exploitable |
+| [CVE-2026-28484](https://www.sentinelone.com/vulnerability-database/cve-2026-28484/) | Git Pre-Commit Hook RCE (CVSS 9.3) | Command injection via crafted filenames in staged files |
+| [CVE-2026-28458](https://www.redpacketsecurity.com/cve-alert-cve-2026-28458-openclaw-openclaw/) | Browser Relay CDP Auth Bypass (CVSS 7.5) | Unauthenticated /cdp WebSocket enables session theft |
+| [CVE-2026-28462](https://www.redpacketsecurity.com/cve-alert-cve-2026-28462-openclaw-openclaw/) | Browser Control Path Traversal (CVSS 7.5) | Arbitrary file writes via /trace/stop, /download |
+| [CVE-2026-29609](https://www.redpacketsecurity.com/cve-alert-cve-2026-29609-openclaw-openclaw/) | fetchWithGuard Memory DoS (CVSS 7.5) | Memory exhaustion via oversized responses |
+| [Huntress](https://www.huntress.com/blog/openclaw-github-ghostsocks-infostealer) | Fake OpenClaw Installers (Mar 4) | GhostSocks + Vidar via Stealth Packer, Bing AI search poisoning |
+| [BleepingComputer](https://www.bleepingcomputer.com/news/security/bing-ai-promoted-fake-openclaw-github-repo-pushing-info-stealing-malware/) | Bing AI Promoted Fake Installers | Search engine poisoning distributing malware via GitHub |
+| [MintMCP](https://www.mintmcp.com/blog/openclaw-cve-explained) | Every OpenClaw CVE Explained | Comprehensive CVE reference for enterprise teams |
+| [jgamblin/OpenClawCVEs](https://github.com/jgamblin/OpenClawCVEs/) | OpenClaw CVE Tracker | Community-maintained CVE tracking repository |
+| [Check Point](https://research.checkpoint.com/2026/rce-and-api-token-exfiltration-through-claude-code-project-files-cve-2025-59536/) | Claude Code MCP Flaws | RCE and API key exfiltration via MCP/hooks config |
 
 ## Related Security Tools
 

@@ -2,7 +2,7 @@
 # OpenClaw Security Monitor - Enhanced Threat Scanner v3.0
 # https://github.com/adibirzu/openclaw-security-monitor
 #
-# 40-point security scanner. Detects: ClawHavoc AMOS stealer (824+ skills),
+# 48-point security scanner. Detects: ClawHavoc AMOS stealer (824+ skills),
 # C2 infrastructure, reverse shells, credential exfiltration, memory
 # poisoning, WebSocket hijacking (CVE-2026-25253), ClawJacked brute-force
 # (v2026.2.25), SKILL.md injection, log poisoning, Vidar infostealer
@@ -10,11 +10,16 @@
 # (CVE-2026-26322, CVE-2026-27488), safeBins bypass (CVE-2026-28363),
 # ACP auto-approval bypass (GHSA-7jx5), PATH hijacking (GHSA-jqpq),
 # env override injection (GHSA-82g8), deep link truncation (CVE-2026-26320),
-# log poisoning, MCP tool poisoning, DM/tool/sandbox policy violations,
-# persistence mechanisms, plugin threats, and more.
+# log poisoning, Browser Relay CDP auth bypass (CVE-2026-28458), browser
+# control path traversal (CVE-2026-28462), exec shell expansion bypass
+# (CVE-2026-28463), approval field injection (CVE-2026-28466), sandbox bridge
+# auth bypass (CVE-2026-28468), webhook DoS (CVE-2026-28478), TAR traversal
+# (CVE-2026-28453), fetchWithGuard memory DoS (CVE-2026-29609), MCP tool
+# poisoning, DM/tool/sandbox policy violations, persistence mechanisms,
+# plugin threats, and more.
 #
-# IOC database updated: 2026-03-02
-# Threat coverage: 13+ CVEs, 20+ GHSAs, 1,184 malicious packages
+# IOC database updated: 2026-03-06
+# Threat coverage: 25+ CVEs, 30+ GHSAs, 1,184 malicious packages
 #
 # Exit codes: 0=SECURE, 1=WARNINGS, 2=COMPROMISED
 set -uo pipefail
@@ -95,7 +100,7 @@ PY
 }
 
 # Count total checks
-TOTAL_CHECKS=40
+TOTAL_CHECKS=48
 
 log "========================================"
 log "OPENCLAW SECURITY SCAN - $TIMESTAMP"
@@ -1307,6 +1312,270 @@ fi
 
 if [ "$LOG_POISON_ISSUES" -eq 0 ]; then
     result_clean "No log poisoning indicators found"
+fi
+
+# ============================================================
+# CHECK 41: Browser Relay CDP Unauthenticated Access (CVE-2026-28458)
+# ============================================================
+header 41 "Checking Browser Relay CDP auth (CVE-2026-28458)..."
+
+CDP_ISSUES=0
+# CVE-2026-28458 (CVSS 7.5): Browser Relay /cdp WebSocket endpoint does not
+# require auth tokens. Websites can connect via ws://127.0.0.1:18792/cdp to
+# steal session cookies and execute JS in other tabs. Fixed in v2026.2.1.
+
+# Check if Browser Relay port is listening
+if command -v lsof &>/dev/null; then
+    CDP_LISTEN=$(lsof -iTCP:18792 -sTCP:LISTEN -nP 2>/dev/null | grep -v COMMAND)
+    if [ -n "$CDP_LISTEN" ]; then
+        log "  Browser Relay is listening on port 18792"
+        if command -v openclaw &>/dev/null && [ -n "$OC_VERSION" ] && [ "$OC_VERSION" != "unknown" ]; then
+            CDP_MAJOR=$(echo "$OC_VERSION" | cut -d'.' -f1)
+            CDP_MINOR=$(echo "$OC_VERSION" | cut -d'.' -f2)
+            CDP_PATCH=$(echo "$OC_VERSION" | cut -d'.' -f3 | cut -d'-' -f1)
+            CDP_VULN=false
+            if [ "$CDP_MAJOR" -eq 2026 ] 2>/dev/null; then
+                if [ "$CDP_MINOR" -lt 2 ] 2>/dev/null; then
+                    CDP_VULN=true
+                elif [ "$CDP_MINOR" -eq 2 ] && [ "$CDP_PATCH" -lt 1 ] 2>/dev/null; then
+                    CDP_VULN=true
+                fi
+            fi
+            if [ "$CDP_VULN" = true ]; then
+                result_critical "Browser Relay /cdp endpoint unauthenticated (CVE-2026-28458). Update to v2026.2.1+"
+                CDP_ISSUES=$((CDP_ISSUES + 1))
+            fi
+        fi
+    fi
+fi
+if [ "$CDP_ISSUES" -eq 0 ]; then
+    result_clean "Browser Relay CDP auth acceptable"
+fi
+
+# ============================================================
+# CHECK 42: Browser Control API Path Traversal (CVE-2026-28462)
+# ============================================================
+header 42 "Checking browser control path traversal (CVE-2026-28462)..."
+
+BCTRL_ISSUES=0
+# CVE-2026-28462 (CVSS 7.5): Browser control API accepts user-supplied output
+# paths for trace/download without constraining to temp dirs. Path traversal
+# via /trace/stop, /wait/download, /download. Fixed in v2026.2.13.
+
+if command -v openclaw &>/dev/null && [ -n "$OC_VERSION" ] && [ "$OC_VERSION" != "unknown" ]; then
+    BC_MAJOR=$(echo "$OC_VERSION" | cut -d'.' -f1)
+    BC_MINOR=$(echo "$OC_VERSION" | cut -d'.' -f2)
+    BC_PATCH=$(echo "$OC_VERSION" | cut -d'.' -f3 | cut -d'-' -f1)
+    BC_VULN=false
+    if [ "$BC_MAJOR" -eq 2026 ] 2>/dev/null; then
+        if [ "$BC_MINOR" -lt 2 ] 2>/dev/null; then
+            BC_VULN=true
+        elif [ "$BC_MINOR" -eq 2 ] && [ "$BC_PATCH" -lt 13 ] 2>/dev/null; then
+            BC_VULN=true
+        fi
+    fi
+    if [ "$BC_VULN" = true ]; then
+        result_critical "Browser control API path traversal (CVE-2026-28462). Update to v2026.2.13+"
+        BCTRL_ISSUES=$((BCTRL_ISSUES + 1))
+    fi
+fi
+if [ "$BCTRL_ISSUES" -eq 0 ]; then
+    result_clean "Browser control path handling acceptable"
+fi
+
+# ============================================================
+# CHECK 43: Exec-Approvals Shell Expansion Bypass (CVE-2026-28463)
+# ============================================================
+header 43 "Checking exec-approvals shell expansion bypass (CVE-2026-28463)..."
+
+SHEXP_ISSUES=0
+# CVE-2026-28463: exec-approvals allowlist validates pre-expansion argv tokens
+# but execution uses real shell expansion. head/tail/grep in safeBins can read
+# arbitrary files via glob patterns or env vars. Fixed in v2026.2.14.
+
+if command -v openclaw &>/dev/null && [ -n "$OC_VERSION" ] && [ "$OC_VERSION" != "unknown" ]; then
+    SE_MAJOR=$(echo "$OC_VERSION" | cut -d'.' -f1)
+    SE_MINOR=$(echo "$OC_VERSION" | cut -d'.' -f2)
+    SE_PATCH=$(echo "$OC_VERSION" | cut -d'.' -f3 | cut -d'-' -f1)
+    SE_VULN=false
+    if [ "$SE_MAJOR" -eq 2026 ] 2>/dev/null; then
+        if [ "$SE_MINOR" -lt 2 ] 2>/dev/null; then
+            SE_VULN=true
+        elif [ "$SE_MINOR" -eq 2 ] && [ "$SE_PATCH" -lt 14 ] 2>/dev/null; then
+            SE_VULN=true
+        fi
+    fi
+    if [ "$SE_VULN" = true ]; then
+        result_critical "Exec-approvals shell expansion bypass (CVE-2026-28463). Update to v2026.2.14+"
+        SHEXP_ISSUES=$((SHEXP_ISSUES + 1))
+    fi
+
+    # Audit safeBins for commands vulnerable to glob-based file reads
+    SAFE_BINS=$(run_with_timeout 5 openclaw config get "tools.exec.safeBins" 2>/dev/null || echo "")
+    for RBIN in head tail grep cat; do
+        if echo "$SAFE_BINS" | grep -q "\"$RBIN\"" 2>/dev/null; then
+            log "  INFO: '$RBIN' in safeBins — ensure v2026.2.14+ for CVE-2026-28463 fix"
+        fi
+    done
+fi
+if [ "$SHEXP_ISSUES" -eq 0 ]; then
+    result_clean "Exec-approvals shell expansion handling acceptable"
+fi
+
+# ============================================================
+# CHECK 44: Approval Field Injection / Exec Gating Bypass (CVE-2026-28466)
+# ============================================================
+header 44 "Checking approval field injection bypass (CVE-2026-28466)..."
+
+AFI_ISSUES=0
+# CVE-2026-28466: Gateway fails to sanitize internal approval fields in
+# node.invoke params, letting authenticated clients bypass exec approval
+# gating for system.run commands. Fixed in v2026.2.14.
+
+if command -v openclaw &>/dev/null && [ -n "$OC_VERSION" ] && [ "$OC_VERSION" != "unknown" ]; then
+    AF_MAJOR=$(echo "$OC_VERSION" | cut -d'.' -f1)
+    AF_MINOR=$(echo "$OC_VERSION" | cut -d'.' -f2)
+    AF_PATCH=$(echo "$OC_VERSION" | cut -d'.' -f3 | cut -d'-' -f1)
+    AF_VULN=false
+    if [ "$AF_MAJOR" -eq 2026 ] 2>/dev/null; then
+        if [ "$AF_MINOR" -lt 2 ] 2>/dev/null; then
+            AF_VULN=true
+        elif [ "$AF_MINOR" -eq 2 ] && [ "$AF_PATCH" -lt 14 ] 2>/dev/null; then
+            AF_VULN=true
+        fi
+    fi
+    if [ "$AF_VULN" = true ]; then
+        result_critical "Approval field injection bypass (CVE-2026-28466). Update to v2026.2.14+"
+        AFI_ISSUES=$((AFI_ISSUES + 1))
+    fi
+fi
+if [ "$AFI_ISSUES" -eq 0 ]; then
+    result_clean "Approval field sanitization acceptable"
+fi
+
+# ============================================================
+# CHECK 45: Sandbox Browser Bridge Auth Bypass (CVE-2026-28468)
+# ============================================================
+header 45 "Checking sandbox browser bridge auth (CVE-2026-28468)..."
+
+SBB_ISSUES=0
+# CVE-2026-28468: Sandbox browser bridge server accepts requests without
+# gateway auth, allowing local attackers to access browser control endpoints.
+# Fixed in v2026.2.14.
+
+if command -v openclaw &>/dev/null && [ -n "$OC_VERSION" ] && [ "$OC_VERSION" != "unknown" ]; then
+    SB_MAJOR2=$(echo "$OC_VERSION" | cut -d'.' -f1)
+    SB_MINOR2=$(echo "$OC_VERSION" | cut -d'.' -f2)
+    SB_PATCH2=$(echo "$OC_VERSION" | cut -d'.' -f3 | cut -d'-' -f1)
+    SB_VULN2=false
+    if [ "$SB_MAJOR2" -eq 2026 ] 2>/dev/null; then
+        if [ "$SB_MINOR2" -lt 2 ] 2>/dev/null; then
+            SB_VULN2=true
+        elif [ "$SB_MINOR2" -eq 2 ] && [ "$SB_PATCH2" -lt 14 ] 2>/dev/null; then
+            SB_VULN2=true
+        fi
+    fi
+    if [ "$SB_VULN2" = true ]; then
+        result_warn "Sandbox browser bridge unauthenticated (CVE-2026-28468). Update to v2026.2.14+"
+        SBB_ISSUES=$((SBB_ISSUES + 1))
+    fi
+fi
+if [ "$SBB_ISSUES" -eq 0 ]; then
+    result_clean "Sandbox browser bridge auth acceptable"
+fi
+
+# ============================================================
+# CHECK 46: Webhook DoS — Oversized Payloads (CVE-2026-28478)
+# ============================================================
+header 46 "Checking webhook DoS / oversized payloads (CVE-2026-28478)..."
+
+WDOS_ISSUES=0
+# CVE-2026-28478: Webhook handlers buffer request bodies without strict byte
+# or time limits. Remote unauthenticated attackers can send oversized JSON or
+# slow uploads to cause memory pressure and availability degradation.
+# Fixed in v2026.2.13.
+
+if command -v openclaw &>/dev/null && [ -n "$OC_VERSION" ] && [ "$OC_VERSION" != "unknown" ]; then
+    WD_MAJOR=$(echo "$OC_VERSION" | cut -d'.' -f1)
+    WD_MINOR=$(echo "$OC_VERSION" | cut -d'.' -f2)
+    WD_PATCH=$(echo "$OC_VERSION" | cut -d'.' -f3 | cut -d'-' -f1)
+    WD_VULN=false
+    if [ "$WD_MAJOR" -eq 2026 ] 2>/dev/null; then
+        if [ "$WD_MINOR" -lt 2 ] 2>/dev/null; then
+            WD_VULN=true
+        elif [ "$WD_MINOR" -eq 2 ] && [ "$WD_PATCH" -lt 13 ] 2>/dev/null; then
+            WD_VULN=true
+        fi
+    fi
+    if [ "$WD_VULN" = true ]; then
+        result_warn "Webhook handlers lack body size/time limits (CVE-2026-28478). Update to v2026.2.13+"
+        WDOS_ISSUES=$((WDOS_ISSUES + 1))
+    fi
+fi
+if [ "$WDOS_ISSUES" -eq 0 ]; then
+    result_clean "Webhook body limits acceptable"
+fi
+
+# ============================================================
+# CHECK 47: TAR Archive Path Traversal (CVE-2026-28453)
+# ============================================================
+header 47 "Checking TAR archive path traversal (CVE-2026-28453)..."
+
+TAR_ISSUES=0
+# CVE-2026-28453: TAR archive extraction does not validate entry paths,
+# allowing ../../ traversal to write files outside intended directories.
+# Can enable config tampering and code execution. Fixed in v2026.2.14.
+
+if command -v openclaw &>/dev/null && [ -n "$OC_VERSION" ] && [ "$OC_VERSION" != "unknown" ]; then
+    TA_MAJOR=$(echo "$OC_VERSION" | cut -d'.' -f1)
+    TA_MINOR=$(echo "$OC_VERSION" | cut -d'.' -f2)
+    TA_PATCH=$(echo "$OC_VERSION" | cut -d'.' -f3 | cut -d'-' -f1)
+    TA_VULN=false
+    if [ "$TA_MAJOR" -eq 2026 ] 2>/dev/null; then
+        if [ "$TA_MINOR" -lt 2 ] 2>/dev/null; then
+            TA_VULN=true
+        elif [ "$TA_MINOR" -eq 2 ] && [ "$TA_PATCH" -lt 14 ] 2>/dev/null; then
+            TA_VULN=true
+        fi
+    fi
+    if [ "$TA_VULN" = true ]; then
+        result_critical "TAR archive path traversal (CVE-2026-28453). Update to v2026.2.14+"
+        TAR_ISSUES=$((TAR_ISSUES + 1))
+    fi
+fi
+if [ "$TAR_ISSUES" -eq 0 ]; then
+    result_clean "TAR archive handling acceptable"
+fi
+
+# ============================================================
+# CHECK 48: fetchWithGuard Memory Exhaustion DoS (CVE-2026-29609)
+# ============================================================
+header 48 "Checking fetchWithGuard memory DoS (CVE-2026-29609)..."
+
+FWG_ISSUES=0
+# CVE-2026-29609 (CVSS 7.5): fetchWithGuard allocates entire response payloads
+# in memory before enforcing maxBytes limits. Oversized responses without
+# Content-Length cause memory exhaustion. Fixed in v2026.2.14.
+
+if command -v openclaw &>/dev/null && [ -n "$OC_VERSION" ] && [ "$OC_VERSION" != "unknown" ]; then
+    FW_MAJOR=$(echo "$OC_VERSION" | cut -d'.' -f1)
+    FW_MINOR=$(echo "$OC_VERSION" | cut -d'.' -f2)
+    FW_PATCH=$(echo "$OC_VERSION" | cut -d'.' -f3 | cut -d'-' -f1)
+    FW_VULN=false
+    if [ "$FW_MAJOR" -eq 2026 ] 2>/dev/null; then
+        if [ "$FW_MINOR" -lt 2 ] 2>/dev/null; then
+            FW_VULN=true
+        elif [ "$FW_MINOR" -eq 2 ] && [ "$FW_PATCH" -lt 14 ] 2>/dev/null; then
+            FW_VULN=true
+        fi
+    fi
+    if [ "$FW_VULN" = true ]; then
+        result_warn "fetchWithGuard memory exhaustion DoS (CVE-2026-29609). Update to v2026.2.14+"
+        FWG_ISSUES=$((FWG_ISSUES + 1))
+    fi
+fi
+if [ "$FWG_ISSUES" -eq 0 ]; then
+    result_clean "fetchWithGuard memory handling acceptable"
 fi
 
 # ============================================================
