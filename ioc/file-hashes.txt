@@ -1,5 +1,5 @@
 # OpenClaw Known Malicious File Hashes (SHA-256)
-# Source: Koi Security, VirusTotal
+# Source: Koi Security, VirusTotal, Huntress
 # Format: hash|filename|platform|family|notes
 
 # Windows AMOS loader
@@ -11,3 +11,12 @@
 
 # Malicious skill archive
 79e8f3f7a6113773cdbced2c7329e6dbb2d0b8b3bf5a18c6c97cb096652bc1f2|skill-archive|any|clawhavoc|Malicious skill package
+
+# Fake installer campaign (Huntress, Mar 4 2026)
+518ff5f147860edee7f8d5620f59f3f0b0da6f0167683a62df2851815f8f44a0|OpenClaw_x64.exe|windows|ghostsocks-installer|Fake installer delivering multi-stage malware
+f03eb5ee2de5f6f76fd7df9f861247f622755e4f04f8ec8ec03f20a9f2adb5b9|cloudvideo.exe|windows|vidar-stealer|Vidar dropper from fake installer chain
+40fcbf9f89f176194f4cc47fca19d27c4ec42f183be4890567c010f8f91a8daa|svc_service.exe|windows|rust-loader|Rust loader in installer execution chain
+fd6706515bb8082f93c2440f66016be13f05a094f8ee5d44f39fe7ac1b30784e|WinHealhCare.exe|windows|purelogs|Renamed payload used for persistence/evasion
+d5dffb8e3859f80395f7fca31c53d8a5f57f946f15f4f7308d59748f5f33dff1|OneSync.exe|windows|info-stealer|Secondary payload in fake installer workflow
+a22ddb4f2c0f57605f86126c87ce88986fdbb3250a4d09f613f4648d6f29281f|serverdrive.exe|windows|ghostsocks|GhostSocks proxy/backconnect component
+e13d93f0573bf312893fefb56f70d8126c749f8fae30c57a56f7bb80ae0f7f4f|OpenClawBot|macos|amos|Universal binary via fake installer lure

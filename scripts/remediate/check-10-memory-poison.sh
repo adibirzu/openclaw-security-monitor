@@ -7,13 +7,13 @@ log "CHECK 10: Remove injected lines from SOUL/MEMORY/IDENTITY.md"
 WORKSPACE_DIR="$OPENCLAW_DIR/workspace"
 FOUND_ISSUES=0
 POISON_PATTERNS=(
-    "ignore previous"
+    "ignore[[:space:]]+previous"
     "disregard"
     "override.*instruction"
-    "you are now"
-    "act as if"
-    "pretend to be"
-    "from now on.*ignore"
+    "you[[:space:]]+are[[:space:]]+now"
+    "act[[:space:]]+as[[:space:]]+if"
+    "pretend[[:space:]]+to[[:space:]]+be"
+    "from[[:space:]]+now[[:space:]]+on.*ignore"
 )
 
 log "Checking workspace directory: $WORKSPACE_DIR"

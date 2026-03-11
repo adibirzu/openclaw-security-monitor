@@ -68,7 +68,7 @@ fi
 
 # Check for prompt injection patterns
 PROMPT_INJECTION_PATTERNS=(
-    "ignore previous instructions"
+    "ignore[[:space:]]+previous[[:space:]]+instructions"
     "disregard.*rules"
     "system.*prompt.*override"
     "execute.*command"

@@ -337,7 +337,7 @@ openclaw config set tools.deny '["exec"]'
 
 **Severity:** CRITICAL
 
-**What it means:** SOUL.md, MEMORY.md, or IDENTITY.md contain prompt injection patterns ("ignore previous instructions", "you are now", etc.).
+**What it means:** SOUL.md, MEMORY.md, or IDENTITY.md contain instruction-override patterns (for example, role-reset language that attempts to redefine agent behavior).
 
 **Remediation:**
 ```bash
@@ -898,8 +898,8 @@ The `remediate.sh` orchestrator runs `scan.sh`, parses the results, skips CLEAN 
 # Scan + remediate (interactive)
 ./scripts/remediate.sh
 
-# Auto-approve all fixes
-./scripts/remediate.sh --yes
+# Auto-approve all fixes (explicit opt-in)
+OPENCLAW_ALLOW_UNATTENDED_REMEDIATE=1 ./scripts/remediate.sh --yes
 
 # Dry run — preview what would be fixed
 ./scripts/remediate.sh --dry-run
@@ -907,13 +907,13 @@ The `remediate.sh` orchestrator runs `scan.sh`, parses the results, skips CLEAN 
 # Remediate a single check
 ./scripts/remediate.sh --check 7 --dry-run
 
-# Run all 48 scripts without scanning
+# Run all 51 scripts without scanning
 ./scripts/remediate.sh --all
 ```
 
 ### Per-Check Remediation Scripts
 
-Each of the 48 scan checks has a dedicated remediation script in `scripts/remediate/`. Scripts are standalone, support `--yes` and `--dry-run`, and return exit 0 (fixed), 1 (failed), or 2 (nothing to fix).
+Each of the 51 scan checks has a dedicated remediation script in `scripts/remediate/`. Scripts are standalone, support `--yes` and `--dry-run`, and return exit 0 (fixed), 1 (failed), or 2 (nothing to fix). Unattended mode (`--yes`) requires `OPENCLAW_ALLOW_UNATTENDED_REMEDIATE=1`.
 
 | Script | Check | Type |
 |--------|-------|------|
@@ -1042,6 +1042,7 @@ The `update-ioc.sh` script:
 2. Scans active network connections against known C2 IPs
 3. Validates installed skills against malicious publisher and pattern databases
 4. Computes file hashes and checks against known malicious hashes
+5. Rejects malformed IOC content and blocks untrusted feed override unless explicitly allowed
 
 ```bash
 # Check for updates without applying
@@ -1049,6 +1050,9 @@ The `update-ioc.sh` script:
 
 # Download and apply updates
 ./scripts/update-ioc.sh
+
+# Override IOC source only with explicit trust bypass
+OPENCLAW_ALLOW_UNTRUSTED_IOC_SOURCE=1 ./scripts/update-ioc.sh --github-repo https://example.com/ioc
 ```
 
 ## Web Dashboard

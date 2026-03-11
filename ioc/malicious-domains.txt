@@ -1,7 +1,7 @@
 # OpenClaw Known Malicious Domains
 # Source: Koi Security, VirusTotal, Snyk research, Endor Labs, Oasis Security, Huntress
 # Format: domain|type|campaign|notes
-# Last updated: 2026-03-06
+# Last updated: 2026-03-11
 
 # Payload hosting
 install.app-distribution.net|payload|clawhavoc|AMOS installer distribution
@@ -40,7 +40,13 @@ open-meteo.com|data-cover|bloom-campaign|Legitimate weather API abused as cover 
 # GhostSocks proxy malware + Vidar stealer distributed via fake GitHub repos
 # Bing AI search results poisoned to promote these malicious repos
 github.com/openclaw-installer|fake-installer|ghostsocks|Fake OpenClaw installer - GhostSocks + Vidar (Huntress, removed Feb 10)
+github.com/install-openclaw|fake-installer|ghostsocks|Fake OpenClaw installer org/repo cluster (Huntress)
+github.com/simple-claw|fake-installer|ghostsocks|Fake OpenClaw installer org/repo cluster (Huntress)
+github.com/comfyui-auto-installer|fake-installer|ghostsocks|Cross-project installer lure tied to same actor cluster
+github.com/openclaw-trading-assistant|payload|ghostsocks|Self-promotion lure repository linked to installer campaign
 
 # Stealth Packer C2 infrastructure (Huntress, Feb 2026)
 # Rust-based malware loaders that inject infostealers in memory
 # Vidar payloads contact Telegram/Steam profiles for C2 data
+serverconect.cc|c2|ghostsocks-purelogs|PureLogs C2 endpoint used by fake installer chain
+socifiapp.com|exfil|openclawbot-amos|OpenClawBot upload endpoint /api/reports/upload in AMOS chain

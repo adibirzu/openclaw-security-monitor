@@ -2,9 +2,10 @@
 name: openclaw-security-monitor
 description: Proactive security monitoring, threat scanning, and auto-remediation for OpenClaw deployments
 tags: [security, scan, remediation, monitoring, threat-detection, hardening]
-version: 3.5.0
+version: 3.6.0
 author: Adrian Birzu
 user-invocable: true
+disable-model-invocation: true
 ---
 <!-- {"requires":{"bins":["bash","curl","node","lsof"],"optionalBins":["witr","docker","openclaw"],"env":{"OPENCLAW_TELEGRAM_TOKEN":"Optional: Telegram bot token for daily security alerts","OPENCLAW_HOME":"Optional: Override default ~/.openclaw directory"}}} -->
 
@@ -16,7 +17,7 @@ Real-time security monitoring with threat intelligence from ClawHavoc research, 
 Note: Replace `<skill-dir>` with the actual folder name where this skill is installed (commonly `openclaw-security-monitor` or `security-monitor`).
 
 ### /security-scan
-Run a comprehensive 48-point security scan:
+Run a comprehensive 51-point security scan:
 1. Known C2 IPs (ClawHavoc: 91.92.242.x, 95.92.242.x, 54.91.154.110)
 2. AMOS stealer / AuthTool markers
 3. Reverse shells & backdoors (bash, python, perl, ruby, php, lua)
@@ -65,6 +66,9 @@ Run a comprehensive 48-point security scan:
 46. Webhook DoS — oversized payloads (CVE-2026-28478)
 47. TAR archive path traversal (CVE-2026-28453)
 48. fetchWithGuard memory exhaustion DoS (CVE-2026-29609, CVSS 7.5)
+49. /agent/act HTTP route unauthenticated access (CVE-2026-28485)
+50. Command hijacking via PATH — unsafe resolution (CVE-2026-29610)
+51. SHA-1 sandbox cache key poisoning (CVE-2026-28479, CVSS 8.7)
 
 ```bash
 bash ~/.openclaw/workspace/skills/<skill-dir>/scripts/scan.sh
@@ -87,14 +91,15 @@ bash ~/.openclaw/workspace/skills/<skill-dir>/scripts/network-check.sh
 ```
 
 ### /security-remediate
-Scan-driven remediation: runs `scan.sh`, skips CLEAN checks, and executes per-check remediation scripts for each WARNING/CRITICAL finding. Includes 48 individual scripts covering file permissions, exfiltration domain blocking, tool deny lists, gateway hardening, sandbox configuration, credential auditing, ClawJacked protection, SSRF hardening, PATH hijacking cleanup, log poisoning remediation, and more.
+Scan-driven remediation: runs `scan.sh`, skips CLEAN checks, and executes per-check remediation scripts for each WARNING/CRITICAL finding. Includes 51 individual scripts covering file permissions, exfiltration domain blocking, tool deny lists, gateway hardening, sandbox configuration, credential auditing, ClawJacked protection, SSRF hardening, PATH hijacking cleanup, log poisoning remediation, /agent/act hardening, SHA-1 cache key migration, and more.
 
 ```bash
 # Full scan + remediate (interactive)
 bash ~/.openclaw/workspace/skills/<skill-dir>/scripts/remediate.sh
 
-# Auto-approve all fixes
-bash ~/.openclaw/workspace/skills/<skill-dir>/scripts/remediate.sh --yes
+# Auto-approve all fixes (explicit opt-in)
+OPENCLAW_ALLOW_UNATTENDED_REMEDIATE=1 \
+  bash ~/.openclaw/workspace/skills/<skill-dir>/scripts/remediate.sh --yes
 
 # Dry run (preview)
 bash ~/.openclaw/workspace/skills/<skill-dir>/scripts/remediate.sh --dry-run
@@ -102,17 +107,33 @@ bash ~/.openclaw/workspace/skills/<skill-dir>/scripts/remediate.sh --dry-run
 # Remediate a single check
 bash ~/.openclaw/workspace/skills/<skill-dir>/scripts/remediate.sh --check 7 --dry-run
 
-# Run all 48 remediation scripts (skip scan)
+# Run all 51 remediation scripts (skip scan)
 bash ~/.openclaw/workspace/skills/<skill-dir>/scripts/remediate.sh --all
 ```
 
 Flags:
-- `--yes` / `-y` — Skip confirmation prompts (auto-approve all fixes)
+- `--yes` / `-y` — Skip confirmation prompts only when `OPENCLAW_ALLOW_UNATTENDED_REMEDIATE=1`
 - `--dry-run` — Show what would be fixed without making changes
 - `--check N` — Run remediation for check N only (skip scan)
-- `--all` — Run all 48 remediation scripts without scanning first
+- `--all` — Run all 51 remediation scripts without scanning first
 
 Exit codes: 0=fixes applied, 1=some fixes failed, 2=nothing to fix
+
+### /clawhub-scan
+Scan all locally installed ClawHub skills for security issues. Checks each skill against:
+- Known malicious publishers (`ioc/malicious-publishers.txt`)
+- Malicious skill name patterns (`ioc/malicious-skill-patterns.txt`)
+- Suspicious script patterns: curl/wget pipe-to-shell, base64 decode/eval, reverse shells, credential file access, environment variable exfiltration
+- Known C2 IP references (`ioc/c2-ips.txt`)
+- Malicious domain references (`ioc/malicious-domains.txt`)
+- SKILL.md integrity (shell injection in Prerequisites)
+- Known malicious file hashes (`ioc/file-hashes.txt`)
+
+```bash
+bash ~/.openclaw/workspace/skills/<skill-dir>/scripts/clawhub-scan.sh
+```
+
+Exit codes: 0=all clean, 1=warnings found, 2=critical findings
 
 ### /security-setup-telegram
 Register a Telegram chat for daily security alerts.
@@ -172,11 +193,14 @@ Based on research from 40+ security sources including:
 - [Prompt Security: Top 10 MCP Risks](https://prompt.security/blog/top-10-mcp-security-risks)
 - [Oasis Security: ClawJacked](https://www.oasis.security/blog/openclaw-vulnerability) (Feb 26)
 - [CVE-2026-28363: safeBins Bypass (CVSS 9.9)](https://advisories.gitlab.com/pkg/npm/openclaw/CVE-2026-28363/)
+- [CVE-2026-28479: SHA-1 Cache Poisoning (CVSS 8.7)](https://advisories.gitlab.com/pkg/npm/openclaw/CVE-2026-28479/)
+- [CVE-2026-28485: /agent/act No Auth](https://advisories.gitlab.com/pkg/npm/openclaw/CVE-2026-28485/)
+- [CVE-2026-29610: Command Hijacking via PATH](https://advisories.gitlab.com/pkg/npm/openclaw/CVE-2026-29610/)
 - [Flare: Widespread Exploitation](https://flare.io/learn/resources/blog/widespread-openclaw-exploitation) (Feb 25)
 
 ## Security & Transparency
 
-**Why the scanner flags itself**: The ClawHub review scanner may report a `[ignore-previous-instructions]` finding for this skill. This is a **false positive** — the strings "ignore previous", "override instruction", etc. exist only within our **detection patterns** (grep regexes in scan.sh and remediation scripts). These patterns are how we *detect* prompt injection in other skills; they are not instructions to the agent.
+**Detection signatures in repository**: This project contains many threat-signature patterns because it scans other skills for risky content. Signature strings are used for detection logic only (grep/regex matching) and are not executable instructions.
 
 **Environment variables**: This skill optionally uses `OPENCLAW_TELEGRAM_TOKEN` for daily scan alerts and `OPENCLAW_HOME` to override the default `~/.openclaw` directory. These are declared in the metadata above.
 
@@ -184,11 +208,11 @@ Based on research from 40+ security sources including:
 
 **What the scanner reads**: The scan inspects files within `~/.openclaw/` (configs, skills, credentials, logs) to detect threats. It reads `.env`, `.ssh`, and keychain paths only as **detection patterns** — it never exfiltrates or transmits this data.
 
-**What remediation does**: Remediation scripts can modify file permissions, block domains in `/etc/hosts`, adjust OpenClaw config, and remove malicious skills. Always run `--dry-run` first to preview changes. The `--yes` flag auto-approves all fixes — use only after reviewing dry-run output.
+**What remediation does**: Remediation scripts can modify file permissions, block domains in `/etc/hosts`, adjust OpenClaw config, and remove malicious skills. Always run `--dry-run` first to preview changes. Unattended mode (`--yes`) now requires explicit `OPENCLAW_ALLOW_UNATTENDED_REMEDIATE=1`.
 
 **Persistence**: The daily cron job and LaunchAgent (dashboard) are both **optional** and manually installed by the user. The skill does not auto-install persistence.
 
-**IOC updates**: `update-ioc.sh` fetches threat intelligence from this project's GitHub repository. Pin the upstream URL if you want to control the source.
+**IOC updates**: `update-ioc.sh` fetches threat intelligence from this project's GitHub repository and validates incoming IOC file format. Untrusted upstream override requires explicit `OPENCLAW_ALLOW_UNTRUSTED_IOC_SOURCE=1`.
 
 **Dashboard binding**: The web dashboard defaults to `127.0.0.1:18800` (localhost only). Set `DASHBOARD_HOST=127.0.0.1` explicitly if concerned about LAN exposure.
 

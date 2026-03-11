@@ -17,11 +17,18 @@ FIXED=0
 FAILED=0
 AUTO=false
 DRY_RUN=false
+ALLOW_UNATTENDED="${OPENCLAW_ALLOW_UNATTENDED_REMEDIATE:-0}"
 
 # Parse flags
 for arg in "$@"; do
     case "$arg" in
-        --yes|-y) AUTO=true ;;
+        --yes|-y)
+            if [ "$ALLOW_UNATTENDED" = "1" ]; then
+                AUTO=true
+            else
+                echo "INFO: --yes ignored. Set OPENCLAW_ALLOW_UNATTENDED_REMEDIATE=1 to enable unattended remediation." >&2
+            fi
+            ;;
         --dry-run) DRY_RUN=true ;;
     esac
 done

@@ -1,25 +1,27 @@
 #!/bin/bash
-# OpenClaw Security Monitor - Enhanced Threat Scanner v3.0
+# OpenClaw Security Monitor - Enhanced Threat Scanner v3.5
 # https://github.com/adibirzu/openclaw-security-monitor
 #
-# 48-point security scanner. Detects: ClawHavoc AMOS stealer (824+ skills),
+# 51-point security scanner. Detects: ClawHavoc AMOS stealer (824+ skills),
 # C2 infrastructure, reverse shells, credential exfiltration, memory
 # poisoning, WebSocket hijacking (CVE-2026-25253), ClawJacked brute-force
 # (v2026.2.25), SKILL.md injection, log poisoning, Vidar infostealer
 # targeting, path traversal (CVE-2026-26329), exec bypass, SSRF
 # (CVE-2026-26322, CVE-2026-27488), safeBins bypass (CVE-2026-28363),
-# ACP auto-approval bypass (GHSA-7jx5), PATH hijacking (GHSA-jqpq),
-# env override injection (GHSA-82g8), deep link truncation (CVE-2026-26320),
-# log poisoning, Browser Relay CDP auth bypass (CVE-2026-28458), browser
-# control path traversal (CVE-2026-28462), exec shell expansion bypass
-# (CVE-2026-28463), approval field injection (CVE-2026-28466), sandbox bridge
-# auth bypass (CVE-2026-28468), webhook DoS (CVE-2026-28478), TAR traversal
-# (CVE-2026-28453), fetchWithGuard memory DoS (CVE-2026-29609), MCP tool
-# poisoning, DM/tool/sandbox policy violations, persistence mechanisms,
-# plugin threats, and more.
+# ACP auto-approval bypass (GHSA-7jx5), PATH hijacking (GHSA-jqpq,
+# CVE-2026-29610), env override injection (GHSA-82g8), deep link truncation
+# (CVE-2026-26320), log poisoning, Browser Relay CDP auth bypass
+# (CVE-2026-28458), browser control path traversal (CVE-2026-28462), exec
+# shell expansion bypass (CVE-2026-28463), approval field injection
+# (CVE-2026-28466), /agent/act no-auth (CVE-2026-28485), sandbox bridge
+# auth bypass (CVE-2026-28468), SHA-1 cache poisoning (CVE-2026-28479),
+# webhook DoS (CVE-2026-28478), TAR traversal (CVE-2026-28453),
+# fetchWithGuard memory DoS (CVE-2026-29609), MCP tool poisoning,
+# DM/tool/sandbox policy violations, persistence mechanisms, plugin
+# threats, and more.
 #
-# IOC database updated: 2026-03-06
-# Threat coverage: 25+ CVEs, 30+ GHSAs, 1,184 malicious packages
+# IOC database updated: 2026-03-11
+# Threat coverage: 28+ CVEs, 30+ GHSAs, 1,184 malicious packages
 #
 # Exit codes: 0=SECURE, 1=WARNINGS, 2=COMPROMISED
 set -uo pipefail
@@ -100,7 +102,7 @@ PY
 }
 
 # Count total checks
-TOTAL_CHECKS=48
+TOTAL_CHECKS=51
 
 log "========================================"
 log "OPENCLAW SECURITY SCAN - $TIMESTAMP"
@@ -287,7 +289,7 @@ MEMORY_POISON=0
 for memfile in "$WORKSPACE_DIR/SOUL.md" "$WORKSPACE_DIR/MEMORY.md" "$WORKSPACE_DIR/IDENTITY.md"; do
     if [ -f "$memfile" ]; then
         # Check for suspicious content
-        POISON_HITS=$(grep -iE "ignore previous|disregard|override.*instruction|system prompt|new instruction|forget.*previous|you are now|act as if|pretend to be|from now on.*ignore" "$memfile" 2>/dev/null || true)
+        POISON_HITS=$(grep -iE "ignore[[:space:]]+previous|disregard|override.*instruction|system[[:space:]]+prompt|new[[:space:]]+instruction|forget.*previous|you[[:space:]]+are[[:space:]]+now|act[[:space:]]+as[[:space:]]+if|pretend[[:space:]]+to[[:space:]]+be|from[[:space:]]+now[[:space:]]+on.*ignore" "$memfile" 2>/dev/null || true)
         if [ -n "$POISON_HITS" ]; then
             result_critical "Memory poisoning detected in $memfile:"
             log "$POISON_HITS"
@@ -949,7 +951,7 @@ fi
 # Scan MCP config for suspicious tool descriptions (prompt injection in tool docstrings)
 MCP_CONFIG="$OPENCLAW_DIR/mcp.json"
 if [ -f "$MCP_CONFIG" ]; then
-    MCP_INJECT=$(grep -iE "ignore previous|system prompt|override instruction|execute command|run this" "$MCP_CONFIG" 2>/dev/null || true)
+    MCP_INJECT=$(grep -iE "ignore[[:space:]]+previous|system[[:space:]]+prompt|override[[:space:]]+instruction|execute[[:space:]]+command|run[[:space:]]+this" "$MCP_CONFIG" 2>/dev/null || true)
     if [ -n "$MCP_INJECT" ]; then
         result_critical "Prompt injection patterns in MCP server config:"
         log "  $MCP_INJECT"
@@ -1576,6 +1578,152 @@ if command -v openclaw &>/dev/null && [ -n "$OC_VERSION" ] && [ "$OC_VERSION" !=
 fi
 if [ "$FWG_ISSUES" -eq 0 ]; then
     result_clean "fetchWithGuard memory handling acceptable"
+fi
+
+# ============================================================
+# CHECK 49: /agent/act No Authentication (CVE-2026-28485)
+# ============================================================
+header 49 "Checking /agent/act auth requirement (CVE-2026-28485)..."
+
+ACT_ISSUES=0
+# CVE-2026-28485: The browser-control HTTP route /agent/act lacks mandatory
+# authentication, allowing any local process or LAN host to trigger browser
+# actions on behalf of the agent. Fixed in v2026.2.12.
+
+if command -v openclaw &>/dev/null && [ -n "$OC_VERSION" ] && [ "$OC_VERSION" != "unknown" ]; then
+    ACT_MAJOR=$(echo "$OC_VERSION" | cut -d'.' -f1)
+    ACT_MINOR=$(echo "$OC_VERSION" | cut -d'.' -f2)
+    ACT_PATCH=$(echo "$OC_VERSION" | cut -d'.' -f3 | cut -d'-' -f1)
+    ACT_VULN=false
+    if [ "$ACT_MAJOR" -eq 2026 ] 2>/dev/null; then
+        if [ "$ACT_MINOR" -lt 2 ] 2>/dev/null; then
+            ACT_VULN=true
+        elif [ "$ACT_MINOR" -eq 2 ] && [ "$ACT_PATCH" -lt 12 ] 2>/dev/null; then
+            ACT_VULN=true
+        fi
+    fi
+    if [ "$ACT_VULN" = true ]; then
+        result_critical "/agent/act HTTP route unauthenticated (CVE-2026-28485). Update to v2026.2.12+"
+        ACT_ISSUES=$((ACT_ISSUES + 1))
+    fi
+fi
+
+# Check if browser extension is enabled (required for the endpoint to be reachable)
+if command -v openclaw &>/dev/null; then
+    BROWSER_EXT=$(run_with_timeout 5 openclaw config get "browser.extension.enabled" 2>/dev/null || echo "")
+    if [ "$BROWSER_EXT" = "true" ] && [ "$ACT_ISSUES" -gt 0 ]; then
+        log "  Browser extension is enabled — /agent/act attack surface is active"
+    elif [ "$BROWSER_EXT" = "true" ]; then
+        log "  INFO: Browser extension enabled; verify v2026.2.12+ for CVE-2026-28485 fix"
+    fi
+fi
+
+if [ "$ACT_ISSUES" -eq 0 ]; then
+    result_clean "/agent/act authentication acceptable"
+fi
+
+# ============================================================
+# CHECK 50: Command Hijacking via PATH (CVE-2026-29610)
+# ============================================================
+header 50 "Checking PATH command hijacking (CVE-2026-29610)..."
+
+PATH610_ISSUES=0
+# CVE-2026-29610: OpenClaw resolves command names against the user PATH without
+# normalising or pinning to absolute paths before version 2026.2.14. A writable
+# directory appearing before system directories in PATH allows a planted binary
+# to intercept openclaw exec calls. Fixed in v2026.2.14.
+# (Distinct from GHSA-jqpq which tracked a related but different code path.)
+
+if command -v openclaw &>/dev/null && [ -n "$OC_VERSION" ] && [ "$OC_VERSION" != "unknown" ]; then
+    P610_MAJOR=$(echo "$OC_VERSION" | cut -d'.' -f1)
+    P610_MINOR=$(echo "$OC_VERSION" | cut -d'.' -f2)
+    P610_PATCH=$(echo "$OC_VERSION" | cut -d'.' -f3 | cut -d'-' -f1)
+    P610_VULN=false
+    if [ "$P610_MAJOR" -eq 2026 ] 2>/dev/null; then
+        if [ "$P610_MINOR" -lt 2 ] 2>/dev/null; then
+            P610_VULN=true
+        elif [ "$P610_MINOR" -eq 2 ] && [ "$P610_PATCH" -lt 14 ] 2>/dev/null; then
+            P610_VULN=true
+        fi
+    fi
+    if [ "$P610_VULN" = true ]; then
+        result_warn "OpenClaw v$OC_VERSION vulnerable to PATH command hijacking (CVE-2026-29610). Update to v2026.2.14+"
+        PATH610_ISSUES=$((PATH610_ISSUES + 1))
+    fi
+fi
+
+# Detect writable PATH directories that appear before standard system dirs
+SYSTEM_DIRS="/usr/bin /bin /usr/sbin /sbin"
+IFS=':' read -ra P610_DIRS <<< "$PATH"
+FOUND_SYSTEM=false
+for PDIR610 in "${P610_DIRS[@]}"; do
+    # Check if this is a system directory
+    for SDIR in $SYSTEM_DIRS; do
+        if [ "$PDIR610" = "$SDIR" ]; then
+            FOUND_SYSTEM=true
+            break
+        fi
+    done
+    # If we haven't hit a system dir yet and this dir is writable by non-owners
+    if [ "$FOUND_SYSTEM" = false ] && [ -d "$PDIR610" ]; then
+        DIR_PERMS=$(stat -f "%Lp" "$PDIR610" 2>/dev/null || stat -c "%a" "$PDIR610" 2>/dev/null || echo "")
+        if [ -n "$DIR_PERMS" ]; then
+            # World-writable or group-writable directory before system paths
+            case "$DIR_PERMS" in
+                *7|*6|*3|*2)
+                    result_warn "Writable dir '$PDIR610' precedes system dirs in PATH (CVE-2026-29610 hijack vector)"
+                    PATH610_ISSUES=$((PATH610_ISSUES + 1))
+                    ;;
+            esac
+        fi
+    fi
+done
+
+if [ "$PATH610_ISSUES" -eq 0 ]; then
+    result_clean "PATH command hijacking risk acceptable"
+fi
+
+# ============================================================
+# CHECK 51: SHA-1 Cache Poisoning (CVE-2026-28479, CVSS 8.7)
+# ============================================================
+header 51 "Checking SHA-1 sandbox cache poisoning (CVE-2026-28479)..."
+
+SHA1_ISSUES=0
+# CVE-2026-28479 (CVSS 8.7): OpenClaw uses SHA-1 to generate sandbox identifier
+# cache keys. SHA-1 collision attacks can cause one sandbox's cached state to
+# be served to a different sandbox, potentially leaking secrets or bypassing
+# isolation. Fixed in v2026.2.15.
+
+if command -v openclaw &>/dev/null && [ -n "$OC_VERSION" ] && [ "$OC_VERSION" != "unknown" ]; then
+    SHA1_MAJOR=$(echo "$OC_VERSION" | cut -d'.' -f1)
+    SHA1_MINOR=$(echo "$OC_VERSION" | cut -d'.' -f2)
+    SHA1_PATCH=$(echo "$OC_VERSION" | cut -d'.' -f3 | cut -d'-' -f1)
+    SHA1_VULN=false
+    if [ "$SHA1_MAJOR" -eq 2026 ] 2>/dev/null; then
+        if [ "$SHA1_MINOR" -lt 2 ] 2>/dev/null; then
+            SHA1_VULN=true
+        elif [ "$SHA1_MINOR" -eq 2 ] && [ "$SHA1_PATCH" -lt 15 ] 2>/dev/null; then
+            SHA1_VULN=true
+        fi
+    fi
+    if [ "$SHA1_VULN" = true ]; then
+        result_critical "OpenClaw v$OC_VERSION uses SHA-1 for sandbox cache keys (CVE-2026-28479, CVSS 8.7). Update to v2026.2.15+"
+        SHA1_ISSUES=$((SHA1_ISSUES + 1))
+    fi
+fi
+
+# Check if sandbox caching is enabled (increases exposure if vulnerable)
+if command -v openclaw &>/dev/null; then
+    SANDBOX_CACHE=$(run_with_timeout 5 openclaw config get "sandbox.cache.enabled" 2>/dev/null || echo "")
+    if [ "$SANDBOX_CACHE" = "true" ] && [ "$SHA1_ISSUES" -gt 0 ]; then
+        log "  Sandbox caching is enabled — SHA-1 collision attack surface is active"
+    elif [ "$SANDBOX_CACHE" = "true" ]; then
+        log "  INFO: Sandbox caching enabled; verify v2026.2.15+ for CVE-2026-28479 fix"
+    fi
+fi
+
+if [ "$SHA1_ISSUES" -eq 0 ]; then
+    result_clean "Sandbox cache key algorithm acceptable"
 fi
 
 # ============================================================
