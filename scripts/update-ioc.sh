@@ -151,6 +151,9 @@ UPDATES_FOUND=0
 
 # Track per-file diffs for summary
 declare -a DIFF_SUMMARIES=()
+# Track pending updates for interactive confirmation
+declare -a PENDING_UPDATES=()
+declare -A PENDING_CONTENT=() 2>/dev/null || true
 
 for ioc_file in "${IOC_FILES[@]}"; do
     echo -n "  Checking $ioc_file... "
@@ -189,16 +192,16 @@ for ioc_file in "${IOC_FILES[@]}"; do
             [ "$DELTA" -gt 0 ] && DELTA_STR="+$DELTA"
             DIFF_SUMMARIES+=("$ioc_file: $DELTA_STR entries (${OLD_LINES} -> ${NEW_LINES})")
 
-            if [ "$AUTO_MODE" = false ]; then
-                cp "$LOCAL_FILE" "$LOCAL_FILE.bak"
-                echo "$REMOTE_CONTENT" > "$LOCAL_FILE"
-                log "Updated $ioc_file (was $LOCAL_HASH, now $REMOTE_HASH)"
-                echo "    -> Updated"
-            else
+            if [ "$AUTO_MODE" = true ]; then
                 cp "$LOCAL_FILE" "$LOCAL_FILE.bak"
                 echo "$REMOTE_CONTENT" > "$LOCAL_FILE"
                 log "Auto-updated $ioc_file (was $LOCAL_HASH, now $REMOTE_HASH)"
                 echo "    -> Auto-updated"
+            else
+                # Interactive mode: stage the update for confirmation
+                PENDING_UPDATES+=("$ioc_file")
+                PENDING_CONTENT["$ioc_file"]="$REMOTE_CONTENT"
+                echo "    -> Pending (will confirm below)"
             fi
         else
             echo "UP TO DATE"
@@ -215,6 +218,32 @@ for ioc_file in "${IOC_FILES[@]}"; do
 done
 
 echo ""
+
+# ============================================================
+# Interactive confirmation for pending updates
+# ============================================================
+if [ "$AUTO_MODE" = false ] && [ "${#PENDING_UPDATES[@]}" -gt 0 ]; then
+    echo "=== Pending IOC Updates ==="
+    for pf in "${PENDING_UPDATES[@]}"; do
+        echo "  - $pf"
+    done
+    echo ""
+    printf "Apply these updates? [y/N] "
+    read -r answer
+    if [[ "$answer" =~ ^[Yy] ]]; then
+        for pf in "${PENDING_UPDATES[@]}"; do
+            LOCAL_FILE="$IOC_DIR/$pf"
+            cp "$LOCAL_FILE" "$LOCAL_FILE.bak" 2>/dev/null || true
+            echo "${PENDING_CONTENT[$pf]}" > "$LOCAL_FILE"
+            log "Updated $pf (user confirmed)"
+            echo "  -> Updated: $pf"
+        done
+    else
+        echo "  Skipped — no IOC files were modified."
+        log "User declined IOC updates"
+    fi
+    echo ""
+fi
 
 # ============================================================
 # 2. Fetch malicious publishers from ClawHub API

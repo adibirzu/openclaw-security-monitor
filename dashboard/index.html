@@ -173,6 +173,14 @@
   .remediate-result.result-failed { background: #2d1215; border: 1px solid #da3633; color: #f85149; }
   .remediate-result.result-skipped { background: #1a1e24; border: 1px solid #30363d; color: #8b949e; }
 
+  /* Filter buttons */
+  .btn-filter {
+    padding: 3px 10px; font-size: 11px; border-radius: 12px; background: transparent;
+    cursor: pointer; transition: background 0.15s, color 0.15s;
+  }
+  .btn-filter.active { background: #30363d; color: #f0f6fc !important; }
+  .btn-filter:hover { background: #21262d; }
+
   /* Responsive */
   @media (max-width: 900px) {
     .grid-top { grid-template-columns: 1fr; }
@@ -192,8 +200,8 @@
     <span class="refresh-timer" id="timerDisplay">30s</span>
     <span class="badge badge-unknown" id="statusBadge">LOADING</span>
     <button class="btn" id="btnRefresh" onclick="refreshAll()">Refresh</button>
-    <button class="btn btn-primary" id="btnScan" onclick="runScan()">Run Scan</button>
-    <button class="btn-remediate-all" id="btnRemediateAll" onclick="remediateAll()">Remediate All</button>
+    <span class="badge" style="background:#1a1e24;border:1px solid #30363d;font-size:11px;color:#8b949e;">v4.2.1</span>
+    <span class="badge" style="background:#1a1e24;border:1px solid #30363d;font-size:11px;color:#8b949e;">READ-ONLY</span>
   </div>
 </div>
 
@@ -216,52 +224,54 @@
 
   <!-- Security checks -->
   <div class="card card-full" style="margin-bottom:16px">
-    <h3>Security Checks</h3>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+      <h3 style="margin-bottom:0">Security Checks <span id="checksCount" style="color:#8b949e;font-weight:400"></span></h3>
+      <div style="display:flex;gap:6px;flex-wrap:wrap" id="checkFilters">
+        <button class="btn btn-filter active" data-filter="all" onclick="filterChecks('all',this)">All</button>
+        <button class="btn btn-filter" data-filter="critical" onclick="filterChecks('critical',this)" style="border-color:#da3633;color:#f85149">Critical</button>
+        <button class="btn btn-filter" data-filter="warning" onclick="filterChecks('warning',this)" style="border-color:#d29922;color:#d29922">Warnings</button>
+        <button class="btn btn-filter" data-filter="clean" onclick="filterChecks('clean',this)" style="border-color:#238636;color:#3fb950">Clean</button>
+      </div>
+    </div>
     <div class="grid-checks" id="checksGrid">
       <div class="loading-overlay"><div class="spinner"></div> Loading...</div>
     </div>
   </div>
 
-  <!-- Process tree + Network -->
+  <!-- IOC Database + Installed Skills -->
   <div class="grid-2col">
     <div class="card">
-      <h3>Process Tree (witr)</h3>
-      <div id="processTree"><div class="loading-overlay"><div class="spinner"></div> Loading...</div></div>
+      <h3>IOC Database</h3>
+      <div id="iocStats"><div class="loading-overlay"><div class="spinner"></div> Loading...</div></div>
     </div>
     <div class="card">
-      <h3>Network Connections</h3>
-      <div id="networkConns"><div class="loading-overlay"><div class="spinner"></div> Loading...</div></div>
+      <h3>Installed Skills</h3>
+      <div id="skillsList"><div class="loading-overlay"><div class="spinner"></div> Loading...</div></div>
     </div>
   </div>
 
-  <!-- Listening ports + File permissions -->
+  <!-- CVE Coverage + Config Audit -->
   <div class="grid-2col">
     <div class="card">
-      <h3>Listening Ports</h3>
-      <div id="listeningPorts"><div class="loading-overlay"><div class="spinner"></div> Loading...</div></div>
+      <h3>Threat Coverage</h3>
+      <div id="threatCoverage"><div class="loading-overlay"><div class="spinner"></div> Loading...</div></div>
     </div>
     <div class="card">
-      <h3>File Permissions</h3>
-      <div id="filePerms"><div class="loading-overlay"><div class="spinner"></div> Loading...</div></div>
+      <h3>Config Audit</h3>
+      <div id="configAudit"><div class="loading-overlay"><div class="spinner"></div> Loading...</div></div>
     </div>
   </div>
 
-  <!-- Provider auth + Blocked commands -->
+  <!-- Scan history + Remediation log -->
   <div class="grid-2col">
     <div class="card">
-      <h3>Provider Auth</h3>
-      <div id="providerAuth"><div class="loading-overlay"><div class="spinner"></div> Loading...</div></div>
+      <h3>Scan History (last 30)</h3>
+      <div id="scanHistory"><div class="loading-overlay"><div class="spinner"></div> Loading...</div></div>
     </div>
     <div class="card">
-      <h3>Blocked Commands</h3>
-      <div id="blockedCmds"><div class="loading-overlay"><div class="spinner"></div> Loading...</div></div>
+      <h3>Remediation Log</h3>
+      <div id="remediationLog"><div class="loading-overlay"><div class="spinner"></div> Loading...</div></div>
     </div>
-  </div>
-
-  <!-- Scan history -->
-  <div class="card card-full">
-    <h3>Scan History (last 30)</h3>
-    <div id="scanHistory"><div class="loading-overlay"><div class="spinner"></div> Loading...</div></div>
   </div>
 </div>
 
@@ -357,21 +367,51 @@ function renderScanSummary(data) {
 }
 
 // Render: Security Checks
+let allChecksData = [];
+let currentFilter = 'all';
+
 function renderChecks(data) {
   const el = document.getElementById('checksGrid');
+  const countEl = document.getElementById('checksCount');
   if (!data || !data.parsed || !data.parsed.checks || data.parsed.checks.length === 0) {
     el.innerHTML = '<div style="color:#8b949e;font-size:13px;padding:12px">No check data available. Run a scan first.</div>';
+    if (countEl) countEl.textContent = '';
     return;
   }
-  el.innerHTML = data.parsed.checks.map(c => `
+  allChecksData = data.parsed.checks;
+  applyFilter(currentFilter);
+}
+
+function applyFilter(filter) {
+  const el = document.getElementById('checksGrid');
+  const countEl = document.getElementById('checksCount');
+  let filtered = allChecksData;
+  if (filter === 'critical') filtered = allChecksData.filter(c => c.status === 'CRITICAL');
+  else if (filter === 'warning') filtered = allChecksData.filter(c => c.status === 'WARNING');
+  else if (filter === 'clean') filtered = allChecksData.filter(c => c.status === 'CLEAN');
+
+  if (countEl) countEl.textContent = `(${filtered.length}/${allChecksData.length})`;
+
+  if (filtered.length === 0) {
+    el.innerHTML = '<div style="color:#8b949e;font-size:13px;padding:12px">No checks match this filter.</div>';
+    return;
+  }
+  el.innerHTML = filtered.map(c => `
     <div class="check-card">
       <div class="check-num">${c.num}/${c.total}</div>
       <div class="check-name">${esc(c.name)}</div>
       <div class="check-status ${statusClass(c.status)}">${esc(c.status)}</div>
       <div class="check-detail">${esc(c.details)}</div>
-      ${c.status !== 'CLEAN' ? `<button class="btn-remediate" id="btnRem${c.num}" onclick="remediateCheck(${c.num})">Remediate</button>` : ''}
+      ${c.status !== 'CLEAN' ? `<button class="btn-remediate" onclick="showRemediateHelp(${c.num})">How to fix</button>` : ''}
     </div>
   `).join('');
+}
+
+function filterChecks(filter, btn) {
+  currentFilter = filter;
+  document.querySelectorAll('.btn-filter').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  applyFilter(filter);
 }
 
 // Render: Gateway
@@ -544,7 +584,7 @@ function renderScanHistory(data) {
     return;
   }
   const entries = data.entries.slice(-30);
-  const maxChecks = 32;
+  const maxChecks = 59;
   let html = '<div class="history-container">';
   entries.forEach(e => {
     const total = e.clean + e.warnings + e.critical;
@@ -556,6 +596,108 @@ function renderScanHistory(data) {
   html += '</div>';
   html += `<div style="display:flex;justify-content:space-between;font-size:10px;color:#484f58;margin-top:4px"><span>${esc(entries[0].timestamp || '')}</span><span>${esc(entries[entries.length-1].timestamp || '')}</span></div>`;
   el.innerHTML = html;
+}
+
+// Render: IOC Stats
+function renderIOCStats(data) {
+  const el = document.getElementById('iocStats');
+  if (!data || data.error) {
+    el.innerHTML = '<div style="color:#8b949e;font-size:13px">No IOC data available</div>';
+    return;
+  }
+  const items = [
+    { label: 'C2 IPs', key: 'c2_ips', icon: '#f85149' },
+    { label: 'Malicious Domains', key: 'malicious_domains', icon: '#d29922' },
+    { label: 'File Hashes', key: 'file_hashes', icon: '#d29922' },
+    { label: 'Malicious Publishers', key: 'malicious_publishers', icon: '#f85149' },
+    { label: 'Skill Patterns', key: 'malicious_skill_patterns', icon: '#d29922' },
+  ];
+  let html = items.map(i => `
+    <div class="info-row">
+      <span class="info-label"><span style="color:${i.icon};font-weight:bold;margin-right:6px">&#9679;</span>${i.label}</span>
+      <span class="info-value">${data[i.key] || 0}</span>
+    </div>
+  `).join('');
+  html += `<div class="info-row" style="margin-top:8px">
+    <span class="info-label">Last Updated</span>
+    <span class="info-value" style="font-size:11px">${esc(data.last_update || 'unknown')}</span>
+  </div>`;
+  const total = items.reduce((sum, i) => sum + (data[i.key] || 0), 0);
+  html += `<div style="margin-top:10px;text-align:center;font-size:24px;font-weight:700;color:#f0f6fc">${total}</div>
+    <div style="text-align:center;font-size:11px;color:#8b949e">Total IOC Entries</div>`;
+  el.innerHTML = html;
+}
+
+// Render: Installed Skills
+function renderSkills(data) {
+  const el = document.getElementById('skillsList');
+  if (!data || !data.skills || data.skills.length === 0) {
+    el.innerHTML = '<div style="color:#8b949e;font-size:13px">No skills installed</div>';
+    return;
+  }
+  let html = '<table class="data-table"><thead><tr><th>Skill</th><th>Version</th><th>SKILL.md</th></tr></thead><tbody>';
+  data.skills.forEach(s => {
+    const hasSkill = s.hasSkillMd ? '<span class="info-ok">&#10003;</span>' : '<span class="info-bad">&#10007;</span>';
+    html += `<tr><td>${esc(s.name)}</td><td>${esc(s.version)}</td><td style="text-align:center">${hasSkill}</td></tr>`;
+  });
+  html += '</tbody></table>';
+  html += `<div style="margin-top:8px;font-size:11px;color:#8b949e">${data.skills.length} skill${data.skills.length !== 1 ? 's' : ''} installed</div>`;
+  el.innerHTML = html;
+}
+
+// Render: Threat Coverage
+function renderThreatCoverage(statusData) {
+  const el = document.getElementById('threatCoverage');
+  const ioc = statusData && statusData.ioc ? statusData.ioc : {};
+  const total = (ioc.c2_ips || 0) + (ioc.malicious_domains || 0) + (ioc.file_hashes || 0) + (ioc.malicious_publishers || 0) + (ioc.malicious_skill_patterns || 0);
+  el.innerHTML = `
+    <div class="info-row"><span class="info-label">Security Checks</span><span class="info-value" style="font-weight:700">59</span></div>
+    <div class="info-row"><span class="info-label">CVEs Tracked</span><span class="info-value">35+</span></div>
+    <div class="info-row"><span class="info-label">GHSAs Tracked</span><span class="info-value">40+</span></div>
+    <div class="info-row"><span class="info-label">Malicious Packages</span><span class="info-value">1,200+</span></div>
+    <div class="info-row"><span class="info-label">IOC Entries</span><span class="info-value">${total}</span></div>
+    <div class="info-row"><span class="info-label">Skills Monitored</span><span class="info-value">${statusData ? statusData.skillCount || 0 : 0}</span></div>
+    <div style="margin-top:10px;font-size:11px;color:#8b949e">Scanner v4.2.1 &mdash; IOC updated: ${esc(ioc.last_update || 'unknown')}</div>
+  `;
+}
+
+// Render: Config Audit
+function renderConfigAudit(data) {
+  const el = document.getElementById('configAudit');
+  if (!data || data.error) {
+    el.innerHTML = '<div style="color:#8b949e;font-size:13px">No config data available</div>';
+    return;
+  }
+  let html = '';
+  html += `<div class="info-row"><span class="info-label">openclaw.json exists</span><span class="info-value ${data.configExists ? 'info-ok' : 'info-bad'}">${data.configExists ? 'Yes' : 'No'}</span></div>`;
+  if (data.configPerms) {
+    const ok = data.configPerms === '0600';
+    html += `<div class="info-row"><span class="info-label">Config permissions</span><span class="info-value ${ok ? 'info-ok' : 'info-bad'}">${esc(data.configPerms)}${ok ? '' : ' (should be 0600)'}</span></div>`;
+  }
+  if (data.configParseError) {
+    html += `<div class="info-row"><span class="info-label">Config parse</span><span class="info-value info-bad">JSON parse error</span></div>`;
+  }
+  if (!html) html = '<div style="color:#8b949e;font-size:13px">Config not found</div>';
+  el.innerHTML = html;
+}
+
+// Render: Remediation Log
+function renderRemediationLog(data) {
+  const el = document.getElementById('remediationLog');
+  if (!data || !data.entries || data.entries.length === 0) {
+    el.innerHTML = '<div style="color:#8b949e;font-size:13px">No remediation log. Run: ./scripts/remediate.sh</div>';
+    return;
+  }
+  const entries = data.entries.slice(-15);
+  el.innerHTML = '<div style="max-height:200px;overflow-y:auto">' + entries.map(e => {
+    const isFixed = e.message.includes('FIXED');
+    const isFailed = e.message.includes('FAILED');
+    const isSummary = e.message.includes('SUMMARY') || e.message.includes('ORCHESTRATOR');
+    const color = isFixed ? '#3fb950' : isFailed ? '#f85149' : isSummary ? '#58a6ff' : '#8b949e';
+    return `<div style="font-size:11px;margin-bottom:3px;padding:3px 6px;border-left:2px solid ${color}">
+      <span style="color:#484f58">${esc(e.timestamp)}</span> <span style="color:${color}">${esc(e.message)}</span>
+    </div>`;
+  }).join('') + '</div>';
 }
 
 // Update status badge
@@ -571,72 +713,47 @@ async function refreshAll() {
   countdown = REFRESH_INTERVAL;
   document.getElementById('btnRefresh').disabled = true;
 
-  const [scanData, dashData, netData, ptData, scanLogData, cronLogData, statusData] = await Promise.all([
+  const [scanData, scanLogData, cronLogData, statusData, iocData, skillsData, configData, remLogData] = await Promise.all([
     apiFetch('/api/scan'),
-    apiFetch('/api/dashboard'),
-    apiFetch('/api/network'),
-    apiFetch('/api/process-tree'),
     apiFetch('/api/logs/scan'),
     apiFetch('/api/logs/cron'),
     apiFetch('/api/status'),
+    apiFetch('/api/ioc'),
+    apiFetch('/api/skills'),
+    apiFetch('/api/config'),
+    apiFetch('/api/logs/remediation'),
   ]);
 
-  // Status badge from status endpoint or scan
+  // Status badge
   if (statusData && statusData.lastScanStatus) {
     updateBadge(statusData.lastScanStatus);
-  } else if (scanData && scanData.parsed && scanData.parsed.status) {
-    updateBadge(scanData.parsed.status);
+  } else if (scanData && scanData.latest && scanData.latest.status) {
+    updateBadge(scanData.latest.status);
   } else {
     updateBadge('UNKNOWN');
   }
 
-  renderScanSummary(scanData);
-  renderChecks(scanData);
-  renderGateway(dashData);
-  renderCron(dashData);
+  // Adapt scan data format for existing renderers
+  const adaptedScan = scanData && scanData.latest ? {
+    parsed: scanData.latest,
+    scannedAt: scanData.latest.timestamp,
+    cached: true,
+  } : null;
+
+  renderScanSummary(adaptedScan);
+  renderChecks(adaptedScan);
   renderCronLog(cronLogData);
-  renderProcessTree(ptData);
-  renderNetwork(netData);
-  renderListeningPorts(ptData); // from process-tree endpoint which has listeners
-  renderFilePerms(dashData);
-  renderProviderAuth(dashData);
-  renderBlockedCmds(dashData);
   renderScanHistory(scanLogData);
+  renderIOCStats(iocData);
+  renderSkills(skillsData);
+  renderThreatCoverage(statusData);
+  renderConfigAudit(configData);
+  renderRemediationLog(remLogData);
 
   document.getElementById('btnRefresh').disabled = false;
 }
 
-// Run scan
-async function runScan() {
-  const btn = document.getElementById('btnScan');
-  btn.disabled = true;
-  btn.textContent = 'Scanning...';
-
-  const data = await apiFetch('/api/scan/run', { method: 'POST' });
-
-  if (data && data.parsed) {
-    updateBadge(data.parsed.status);
-    renderScanSummary(data);
-    renderChecks(data);
-  }
-
-  // Refresh everything else
-  const [dashData, scanLogData] = await Promise.all([
-    apiFetch('/api/dashboard'),
-    apiFetch('/api/logs/scan'),
-  ]);
-  renderGateway(dashData);
-  renderFilePerms(dashData);
-  renderProviderAuth(dashData);
-  renderBlockedCmds(dashData);
-  renderScanHistory(scanLogData);
-
-  btn.disabled = false;
-  btn.textContent = 'Run Scan';
-  countdown = REFRESH_INTERVAL;
-}
-
-// Modal
+// Modal (info only)
 function openModal(title, bodyHtml) {
   document.getElementById('modalTitle').textContent = title;
   document.getElementById('modalBody').innerHTML = bodyHtml;
@@ -646,50 +763,12 @@ function closeModal() {
   document.getElementById('remediateModal').classList.remove('active');
 }
 
-// Remediate single check
-async function remediateCheck(num) {
-  const btn = document.getElementById('btnRem' + num);
-  if (btn) { btn.disabled = true; btn.textContent = 'Running...'; }
-  openModal(`Remediation - Check ${num}`, '<div class="loading-overlay"><div class="spinner"></div> Running remediation...</div>');
-  const data = await apiFetch(`/api/remediate/check/${num}`, { method: 'POST' });
-  let html = '';
-  if (data.error && !data.output) {
-    html = `<div class="remediate-result result-failed">${esc(data.error)}</div>`;
-  } else {
-    const cls = data.status === 'fixed' ? 'result-fixed' : data.status === 'nothing_to_fix' ? 'result-skipped' : 'result-failed';
-    const label = data.status === 'fixed' ? 'Fixed' : data.status === 'nothing_to_fix' ? 'Nothing to fix' : 'Failed';
-    html = `<div class="remediate-result ${cls}">Check ${num}: ${label}</div>`;
-    if (data.output) html += `<pre>${esc(data.output)}</pre>`;
-    if (data.stderr) html += `<pre style="color:#f85149">${esc(data.stderr)}</pre>`;
-  }
-  document.getElementById('modalBody').innerHTML = html;
-  if (btn) { btn.disabled = false; btn.textContent = 'Remediate'; }
-  refreshAll();
-}
-
-// Remediate all non-clean checks
-async function remediateAll() {
-  const btn = document.getElementById('btnRemediateAll');
-  btn.disabled = true;
-  btn.textContent = 'Remediating...';
-  openModal('Remediate All', '<div class="loading-overlay"><div class="spinner"></div> Running remediation on all non-clean checks...</div>');
-  const data = await apiFetch('/api/remediate/all', { method: 'POST' });
-  let html = '';
-  if (data.error && !data.results) {
-    html = `<div class="remediate-result result-failed">${esc(data.error)}</div>`;
-  } else if (data.results) {
-    const s = data.summary;
-    html += `<div style="margin-bottom:12px;font-size:14px;color:#f0f6fc">${s.fixed} fixed, ${s.failed} failed, ${s.skipped} skipped (${s.total} total)</div>`;
-    data.results.forEach(r => {
-      const cls = r.status === 'fixed' ? 'result-fixed' : r.status === 'nothing_to_fix' || r.status === 'no_script' ? 'result-skipped' : 'result-failed';
-      const label = r.status === 'fixed' ? 'Fixed' : r.status === 'nothing_to_fix' ? 'Nothing to fix' : r.status === 'no_script' ? 'No script' : 'Failed';
-      html += `<div class="remediate-result ${cls}">Check ${r.check} - ${esc(r.name || '')}: ${label}</div>`;
-    });
-  }
-  document.getElementById('modalBody').innerHTML = html;
-  btn.disabled = false;
-  btn.textContent = 'Remediate All';
-  refreshAll();
+// Show CLI instructions for remediation
+function showRemediateHelp(num) {
+  openModal(`Remediate Check ${num}`, `
+    <p style="margin-bottom:12px">This dashboard is read-only. To remediate, run in your terminal:</p>
+    <pre style="background:#161b22;padding:12px;border-radius:6px;color:#58a6ff">./scripts/remediate.sh --check ${num} --dry-run\n./scripts/remediate.sh --check ${num}</pre>
+  `);
 }
 
 // Countdown timer

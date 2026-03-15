@@ -2,7 +2,7 @@
 name: openclaw-security-monitor
 description: Proactive security monitoring, threat scanning, and auto-remediation for OpenClaw deployments
 tags: [security, scan, remediation, monitoring, threat-detection, hardening]
-version: 4.0.0
+version: 4.2.1
 author: Adrian Birzu
 user-invocable: true
 disable-model-invocation: true
@@ -115,7 +115,7 @@ bash ~/.openclaw/workspace/skills/<skill-dir>/scripts/remediate.sh --dry-run
 # Remediate a single check
 bash ~/.openclaw/workspace/skills/<skill-dir>/scripts/remediate.sh --check 7 --dry-run
 
-# Run all 51 remediation scripts (skip scan)
+# Run all 59 remediation scripts (skip scan)
 bash ~/.openclaw/workspace/skills/<skill-dir>/scripts/remediate.sh --all
 ```
 
@@ -154,7 +154,7 @@ bash ~/.openclaw/workspace/skills/<skill-dir>/scripts/telegram-setup.sh [chat_id
 
 **URL**: `http://<vm-ip>:18800`
 
-Dark-themed browser dashboard with auto-refresh, on-demand scanning, donut charts, process tree visualization, network monitoring, and scan history timeline.
+Read-only dark-themed browser dashboard that displays scan results from log files, IOC stats, installed skills list, and scan history. Does not execute any shell commands or child processes — all scans and remediation are triggered via CLI scripts.
 
 ### Service Management
 ```bash
@@ -172,9 +172,9 @@ Threat intelligence files in `ioc/`:
 - `malicious-publishers.txt` - Known malicious ClawHub publishers
 - `malicious-skill-patterns.txt` - Malicious skill naming patterns
 
-## Daily Automated Scan
+## Daily Automated Scan (Optional)
 
-Cron job at 06:00 UTC with Telegram alerts. Install:
+Optional cron job at 06:00 UTC with Telegram alerts. **Not auto-installed** — requires explicit user action:
 ```bash
 crontab -l | { cat; echo "0 6 * * * $HOME/.openclaw/workspace/skills/<skill-dir>/scripts/daily-scan-cron.sh"; } | crontab -
 ```
@@ -218,21 +218,23 @@ Based on research from 40+ security sources including:
 
 ## Security & Transparency
 
-**Detection signatures in repository**: This project contains many threat-signature patterns because it scans other skills for risky content. Signature strings are used for detection logic only (grep/regex matching) and are not executable instructions.
+**Source repository**: [github.com/adibirzu/openclaw-security-monitor](https://github.com/adibirzu/openclaw-security-monitor) — all source code is publicly auditable.
 
-**Environment variables**: This skill optionally uses `OPENCLAW_TELEGRAM_TOKEN` for daily scan alerts and `OPENCLAW_HOME` to override the default `~/.openclaw` directory. These are declared in the metadata above.
+**Detection signatures in repository**: This project contains threat-signature patterns (IP addresses, domain names, hash values) because it scans skills for risky content. These strings are used for grep/regex matching only and are not executable instructions.
 
 **Required binaries**: `bash`, `curl`, `node` (for dashboard), `lsof` (for network checks). Optional: `witr` (process trees), `docker` (container audits), `openclaw` CLI (config checks).
 
-**What the scanner reads**: The scan inspects files within `~/.openclaw/` (configs, skills, credentials, logs) to detect threats. It reads `.env`, `.ssh`, and keychain paths only as **detection patterns** — it never exfiltrates or transmits this data.
+**Environment variables**: `OPENCLAW_TELEGRAM_TOKEN` (optional, for daily scan alerts), `OPENCLAW_HOME` (optional, overrides default `~/.openclaw` directory). Both are declared in the frontmatter metadata above.
 
-**What remediation does**: Remediation scripts can modify file permissions, block domains in `/etc/hosts`, adjust OpenClaw config, and remove malicious skills. Always run `--dry-run` first to preview changes. Unattended mode (`--yes`) now requires explicit `OPENCLAW_ALLOW_UNATTENDED_REMEDIATE=1`.
+**What the scanner reads**: `scan.sh` reads files within `~/.openclaw/` (configs, skills, credentials, logs) to detect threats. It pattern-matches against `.env`, `.ssh`, and keychain paths for detection only — it never exfiltrates, transmits, or modifies data. The scanner is read-only.
 
-**Persistence**: The daily cron job and LaunchAgent (dashboard) are both **optional** and manually installed by the user. The skill does not auto-install persistence.
+**What remediation does**: `remediate.sh` can modify file permissions, block domains in `/etc/hosts`, adjust OpenClaw gateway config, quarantine MCP configs, and remove malicious skills. **Always run `--dry-run` first** to preview changes. Unattended mode (`--yes`) requires explicit `OPENCLAW_ALLOW_UNATTENDED_REMEDIATE=1` — without this env var, `--yes` is silently ignored.
 
-**IOC updates**: `update-ioc.sh` fetches threat intelligence from this project's GitHub repository and validates incoming IOC file format. Untrusted upstream override requires explicit `OPENCLAW_ALLOW_UNTRUSTED_IOC_SOURCE=1`.
+**IOC updates**: `update-ioc.sh` fetches threat intelligence from this project's GitHub repository. In interactive mode it shows pending changes and asks for confirmation before writing. `--auto` mode (for cron) writes without prompting. Validates incoming IOC file format (field counts). Untrusted upstream repos require explicit `OPENCLAW_ALLOW_UNTRUSTED_IOC_SOURCE=1`.
 
-**Dashboard binding**: The web dashboard defaults to `127.0.0.1:18800` (localhost only). Set `DASHBOARD_HOST=127.0.0.1` explicitly if concerned about LAN exposure.
+**No auto-installed persistence**: The installer does NOT create cron jobs, LaunchAgents, symlinks, or background services. Cron and LaunchAgent setup are documented as optional manual steps that the user must explicitly run themselves.
+
+**Dashboard binding**: The web dashboard is read-only (no shell commands, no child processes) and defaults to `127.0.0.1:18800` (localhost only). It reads log files and IOC stats only.
 
 ## Installation
 
