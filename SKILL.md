@@ -2,7 +2,7 @@
 name: openclaw-security-monitor
 description: Proactive security monitoring, threat scanning, and auto-remediation for OpenClaw deployments
 tags: [security, scan, remediation, monitoring, threat-detection, hardening]
-version: 3.6.0
+version: 4.0.0
 author: Adrian Birzu
 user-invocable: true
 disable-model-invocation: true
@@ -17,7 +17,7 @@ Real-time security monitoring with threat intelligence from ClawHavoc research, 
 Note: Replace `<skill-dir>` with the actual folder name where this skill is installed (commonly `openclaw-security-monitor` or `security-monitor`).
 
 ### /security-scan
-Run a comprehensive 51-point security scan:
+Run a comprehensive 59-point security scan:
 1. Known C2 IPs (ClawHavoc: 91.92.242.x, 95.92.242.x, 54.91.154.110)
 2. AMOS stealer / AuthTool markers
 3. Reverse shells & backdoors (bash, python, perl, ruby, php, lua)
@@ -69,6 +69,14 @@ Run a comprehensive 51-point security scan:
 49. /agent/act HTTP route unauthenticated access (CVE-2026-28485)
 50. Command hijacking via PATH — unsafe resolution (CVE-2026-29610)
 51. SHA-1 sandbox cache key poisoning (CVE-2026-28479, CVSS 8.7)
+52. Google Chat webhook cross-account bypass (CVE-2026-28469, CVSS 9.8)
+53. Gateway WebSocket device identity skip (CVE-2026-28472)
+54. Cross-Site WebSocket Hijacking in trusted-proxy (CVE-2026-32302)
+55. Device pairing credential exposure (GHSA-7h7g-x2px-94hj)
+56. Operator privilege escalation (GHSA-vmhq-cqm9-6p7q)
+57. MCP server tool poisoning via schema injection (OWASP MCP03/MCP06)
+58. SANDWORM_MODE MCP worm detection (Socket, Feb 2026)
+59. Rules file backdoor / hidden Unicode injection (Pillar Security)
 
 ```bash
 bash ~/.openclaw/workspace/skills/<skill-dir>/scripts/scan.sh
@@ -91,7 +99,7 @@ bash ~/.openclaw/workspace/skills/<skill-dir>/scripts/network-check.sh
 ```
 
 ### /security-remediate
-Scan-driven remediation: runs `scan.sh`, skips CLEAN checks, and executes per-check remediation scripts for each WARNING/CRITICAL finding. Includes 51 individual scripts covering file permissions, exfiltration domain blocking, tool deny lists, gateway hardening, sandbox configuration, credential auditing, ClawJacked protection, SSRF hardening, PATH hijacking cleanup, log poisoning remediation, /agent/act hardening, SHA-1 cache key migration, and more.
+Scan-driven remediation: runs `scan.sh`, skips CLEAN checks, and executes per-check remediation scripts for each WARNING/CRITICAL finding. Includes 59 individual scripts covering file permissions, exfiltration domain blocking, tool deny lists, gateway hardening, sandbox configuration, credential auditing, ClawJacked protection, SSRF hardening, PATH hijacking cleanup, log poisoning remediation, /agent/act hardening, SHA-1 cache key migration, Google Chat webhook hardening, WebSocket identity enforcement, MCP tool poisoning quarantine, SANDWORM_MODE worm cleanup, and rules file Unicode sanitization.
 
 ```bash
 # Full scan + remediate (interactive)
@@ -115,7 +123,7 @@ Flags:
 - `--yes` / `-y` — Skip confirmation prompts only when `OPENCLAW_ALLOW_UNATTENDED_REMEDIATE=1`
 - `--dry-run` — Show what would be fixed without making changes
 - `--check N` — Run remediation for check N only (skip scan)
-- `--all` — Run all 51 remediation scripts without scanning first
+- `--all` — Run all 59 remediation scripts without scanning first
 
 Exit codes: 0=fixes applied, 1=some fixes failed, 2=nothing to fix
 
@@ -197,6 +205,16 @@ Based on research from 40+ security sources including:
 - [CVE-2026-28485: /agent/act No Auth](https://advisories.gitlab.com/pkg/npm/openclaw/CVE-2026-28485/)
 - [CVE-2026-29610: Command Hijacking via PATH](https://advisories.gitlab.com/pkg/npm/openclaw/CVE-2026-29610/)
 - [Flare: Widespread Exploitation](https://flare.io/learn/resources/blog/widespread-openclaw-exploitation) (Feb 25)
+- [CVE-2026-28469: Google Chat Webhook Cross-Account Bypass (CVSS 9.8)](https://dailycve.com/openclaw-authorization-bypass-cve-2026-28469-critical/)
+- [CVE-2026-28472: Gateway WebSocket Device Identity Skip](https://cvereports.com/reports/CVE-2026-28472)
+- [CVE-2026-32302: Cross-Site WebSocket Hijacking](https://cvereports.com/reports/CVE-2026-32302)
+- [GHSA-7h7g: Device Pairing Credential Exposure](https://cvereports.com/reports/GHSA-7h7g-x2px-94hj)
+- [GHSA-vmhq: Operator Privilege Escalation](https://cvereports.com/reports/GHSA-VMHQ-CQM9-6P7Q)
+- [Socket: SANDWORM_MODE npm Worm](https://socket.dev/blog/sandworm-mode-npm-worm-ai-toolchain-poisoning) (Feb 20)
+- [Pillar Security: Rules File Backdoor](https://www.pillar.security/blog/new-vulnerability-in-github-copilot-and-cursor-how-hackers-can-weaponize-code-agents)
+- [OWASP MCP Top 10](https://owasp.org/www-project-mcp-top-10/)
+- [CyberArk: MCP Output Poisoning](https://www.cyberark.com/resources/threat-research-blog/poison-everywhere-no-output-from-your-mcp-server-is-safe)
+- [Semgrep: First Malicious MCP Server on npm](https://semgrep.dev/blog/2025/so-the-first-malicious-mcp-server-has-been-found-on-npm-what-does-this-mean-for-mcp-security/)
 
 ## Security & Transparency
 

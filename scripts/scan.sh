@@ -1,8 +1,8 @@
 #!/bin/bash
-# OpenClaw Security Monitor - Enhanced Threat Scanner v3.5
+# OpenClaw Security Monitor - Enhanced Threat Scanner v4.0
 # https://github.com/adibirzu/openclaw-security-monitor
 #
-# 51-point security scanner. Detects: ClawHavoc AMOS stealer (824+ skills),
+# 59-point security scanner. Detects: ClawHavoc AMOS stealer (824+ skills),
 # C2 infrastructure, reverse shells, credential exfiltration, memory
 # poisoning, WebSocket hijacking (CVE-2026-25253), ClawJacked brute-force
 # (v2026.2.25), SKILL.md injection, log poisoning, Vidar infostealer
@@ -16,12 +16,17 @@
 # (CVE-2026-28466), /agent/act no-auth (CVE-2026-28485), sandbox bridge
 # auth bypass (CVE-2026-28468), SHA-1 cache poisoning (CVE-2026-28479),
 # webhook DoS (CVE-2026-28478), TAR traversal (CVE-2026-28453),
-# fetchWithGuard memory DoS (CVE-2026-29609), MCP tool poisoning,
+# fetchWithGuard memory DoS (CVE-2026-29609), Google Chat webhook bypass
+# (CVE-2026-28469), gateway WebSocket identity skip (CVE-2026-28472),
+# Cross-Site WebSocket Hijacking (CVE-2026-32302), device pairing credential
+# exposure (GHSA-7h7g), operator privilege escalation (GHSA-vmhq),
+# MCP tool poisoning via schema injection (OWASP MCP03/MCP06),
+# SANDWORM_MODE MCP worm detection, rules file backdoor / Unicode injection,
 # DM/tool/sandbox policy violations, persistence mechanisms, plugin
 # threats, and more.
 #
-# IOC database updated: 2026-03-11
-# Threat coverage: 28+ CVEs, 30+ GHSAs, 1,184 malicious packages
+# IOC database updated: 2026-03-15
+# Threat coverage: 35+ CVEs, 40+ GHSAs, 1,200+ malicious packages
 #
 # Exit codes: 0=SECURE, 1=WARNINGS, 2=COMPROMISED
 set -uo pipefail
@@ -102,7 +107,7 @@ PY
 }
 
 # Count total checks
-TOTAL_CHECKS=51
+TOTAL_CHECKS=59
 
 log "========================================"
 log "OPENCLAW SECURITY SCAN - $TIMESTAMP"
@@ -1724,6 +1729,338 @@ fi
 
 if [ "$SHA1_ISSUES" -eq 0 ]; then
     result_clean "Sandbox cache key algorithm acceptable"
+fi
+
+# ============================================================
+# CHECK 52: Google Chat Webhook Cross-Account Bypass (CVE-2026-28469, CVSS 9.8)
+# ============================================================
+header 52 "Checking Google Chat webhook authorization (CVE-2026-28469)..."
+
+GCW_ISSUES=0
+# CVE-2026-28469 (CVSS 9.8, Critical): Google Chat webhook handler uses first-match
+# semantics when multiple webhook targets share the same HTTP path. A cross-account
+# attacker can register a matching path to intercept or inject messages.
+# Fixed in v2026.2.14.
+
+if command -v openclaw &>/dev/null && [ -n "$OC_VERSION" ] && [ "$OC_VERSION" != "unknown" ]; then
+    GCW_MAJOR=$(echo "$OC_VERSION" | cut -d'.' -f1)
+    GCW_MINOR=$(echo "$OC_VERSION" | cut -d'.' -f2)
+    GCW_PATCH=$(echo "$OC_VERSION" | cut -d'.' -f3 | cut -d'-' -f1)
+    GCW_VULN=false
+    if [ "$GCW_MAJOR" -eq 2026 ] 2>/dev/null; then
+        if [ "$GCW_MINOR" -lt 2 ] 2>/dev/null; then
+            GCW_VULN=true
+        elif [ "$GCW_MINOR" -eq 2 ] && [ "$GCW_PATCH" -lt 14 ] 2>/dev/null; then
+            GCW_VULN=true
+        fi
+    fi
+    if [ "$GCW_VULN" = true ]; then
+        result_critical "Google Chat webhook cross-account bypass (CVE-2026-28469, CVSS 9.8). Update to v2026.2.14+"
+        GCW_ISSUES=$((GCW_ISSUES + 1))
+    fi
+fi
+
+# Check if Google Chat integration is configured
+if command -v openclaw &>/dev/null; then
+    GCHAT_ENABLED=$(run_with_timeout 5 openclaw config get "integrations.googlechat.enabled" 2>/dev/null || echo "")
+    if [ "$GCHAT_ENABLED" = "true" ] && [ "$GCW_ISSUES" -gt 0 ]; then
+        log "  Google Chat integration is active — CVE-2026-28469 attack surface is live"
+    fi
+fi
+
+if [ "$GCW_ISSUES" -eq 0 ]; then
+    result_clean "Google Chat webhook authorization acceptable"
+fi
+
+# ============================================================
+# CHECK 53: Gateway WebSocket Device Identity Skip (CVE-2026-28472)
+# ============================================================
+header 53 "Checking gateway WebSocket device identity (CVE-2026-28472)..."
+
+WSDI_ISSUES=0
+# CVE-2026-28472: Gateway WebSocket connect handshake skips device identity checks,
+# granting operator access without device verification. Allows unauthorized
+# WebSocket connections to escalate to operator-level sessions. Fixed in v2026.3.11.
+
+if command -v openclaw &>/dev/null && [ -n "$OC_VERSION" ] && [ "$OC_VERSION" != "unknown" ]; then
+    WSDI_MAJOR=$(echo "$OC_VERSION" | cut -d'.' -f1)
+    WSDI_MINOR=$(echo "$OC_VERSION" | cut -d'.' -f2)
+    WSDI_PATCH=$(echo "$OC_VERSION" | cut -d'.' -f3 | cut -d'-' -f1)
+    WSDI_VULN=false
+    if [ "$WSDI_MAJOR" -eq 2026 ] 2>/dev/null; then
+        if [ "$WSDI_MINOR" -lt 3 ] 2>/dev/null; then
+            WSDI_VULN=true
+        elif [ "$WSDI_MINOR" -eq 3 ] && [ "$WSDI_PATCH" -lt 11 ] 2>/dev/null; then
+            WSDI_VULN=true
+        fi
+    fi
+    if [ "$WSDI_VULN" = true ]; then
+        result_critical "Gateway WebSocket skips device identity check (CVE-2026-28472). Update to v2026.3.11+"
+        WSDI_ISSUES=$((WSDI_ISSUES + 1))
+    fi
+fi
+
+if [ "$WSDI_ISSUES" -eq 0 ]; then
+    result_clean "Gateway WebSocket device identity acceptable"
+fi
+
+# ============================================================
+# CHECK 54: Cross-Site WebSocket Hijacking in Trusted-Proxy (CVE-2026-32302)
+# ============================================================
+header 54 "Checking Cross-Site WebSocket Hijacking (CVE-2026-32302)..."
+
+CSWSH_ISSUES=0
+# CVE-2026-32302: Origin validation bypass in trusted-proxy mode allows attacker-origin
+# pages to establish privileged operator sessions via WebSocket. Fixed in v2026.3.11.
+
+if command -v openclaw &>/dev/null && [ -n "$OC_VERSION" ] && [ "$OC_VERSION" != "unknown" ]; then
+    CSW_MAJOR=$(echo "$OC_VERSION" | cut -d'.' -f1)
+    CSW_MINOR=$(echo "$OC_VERSION" | cut -d'.' -f2)
+    CSW_PATCH=$(echo "$OC_VERSION" | cut -d'.' -f3 | cut -d'-' -f1)
+    CSW_VULN=false
+    if [ "$CSW_MAJOR" -eq 2026 ] 2>/dev/null; then
+        if [ "$CSW_MINOR" -lt 3 ] 2>/dev/null; then
+            CSW_VULN=true
+        elif [ "$CSW_MINOR" -eq 3 ] && [ "$CSW_PATCH" -lt 11 ] 2>/dev/null; then
+            CSW_VULN=true
+        fi
+    fi
+    if [ "$CSW_VULN" = true ]; then
+        result_critical "Cross-Site WebSocket Hijacking via Origin bypass (CVE-2026-32302). Update to v2026.3.11+"
+        CSWSH_ISSUES=$((CSWSH_ISSUES + 1))
+    fi
+fi
+
+# Extra risk if trusted-proxy mode is active
+if command -v openclaw &>/dev/null; then
+    TRUSTED_PROXY_MODE=$(run_with_timeout 5 openclaw config get "gateway.trustedProxy" 2>/dev/null || echo "")
+    if [ "$TRUSTED_PROXY_MODE" = "true" ] && [ "$CSWSH_ISSUES" -gt 0 ]; then
+        log "  Trusted-proxy mode is ACTIVE — CVE-2026-32302 exploitation is trivial"
+    elif [ "$TRUSTED_PROXY_MODE" = "true" ]; then
+        log "  INFO: Trusted-proxy mode enabled; verify v2026.3.11+ for CVE-2026-32302 fix"
+    fi
+fi
+
+if [ "$CSWSH_ISSUES" -eq 0 ]; then
+    result_clean "Cross-Site WebSocket Hijacking protection acceptable"
+fi
+
+# ============================================================
+# CHECK 55: Device Pairing Credential Exposure (GHSA-7h7g-x2px-94hj)
+# ============================================================
+header 55 "Checking device pairing credential exposure (GHSA-7h7g)..."
+
+DPCE_ISSUES=0
+# GHSA-7h7g-x2px-94hj: Device pairing setup codes expose long-lived gateway
+# credentials instead of short-lived bootstrap tokens. Compromised setup codes
+# grant persistent access. Fixed in v2026.3.12.
+
+if command -v openclaw &>/dev/null && [ -n "$OC_VERSION" ] && [ "$OC_VERSION" != "unknown" ]; then
+    DP_MAJOR=$(echo "$OC_VERSION" | cut -d'.' -f1)
+    DP_MINOR=$(echo "$OC_VERSION" | cut -d'.' -f2)
+    DP_PATCH=$(echo "$OC_VERSION" | cut -d'.' -f3 | cut -d'-' -f1)
+    DP_VULN=false
+    if [ "$DP_MAJOR" -eq 2026 ] 2>/dev/null; then
+        if [ "$DP_MINOR" -lt 3 ] 2>/dev/null; then
+            DP_VULN=true
+        elif [ "$DP_MINOR" -eq 3 ] && [ "$DP_PATCH" -lt 12 ] 2>/dev/null; then
+            DP_VULN=true
+        fi
+    fi
+    if [ "$DP_VULN" = true ]; then
+        result_warn "Device pairing exposes long-lived credentials (GHSA-7h7g). Update to v2026.3.12+"
+        DPCE_ISSUES=$((DPCE_ISSUES + 1))
+    fi
+fi
+
+# Check if pairing has been used (device.json exists)
+DEVICE_JSON="$OPENCLAW_DIR/device.json"
+if [ -f "$DEVICE_JSON" ] && [ "$DPCE_ISSUES" -gt 0 ]; then
+    log "  device.json exists — rotate credentials after upgrading"
+fi
+
+if [ "$DPCE_ISSUES" -eq 0 ]; then
+    result_clean "Device pairing credential handling acceptable"
+fi
+
+# ============================================================
+# CHECK 56: Operator Privilege Escalation (GHSA-vmhq-cqm9-6p7q)
+# ============================================================
+header 56 "Checking operator privilege escalation (GHSA-vmhq)..."
+
+OPE_ISSUES=0
+# GHSA-vmhq-cqm9-6p7q (High): Accounts with operator.write permissions can access
+# admin-only endpoints to create/delete browser profiles, escalating privileges.
+# Fixed in v2026.3.12.
+
+if command -v openclaw &>/dev/null && [ -n "$OC_VERSION" ] && [ "$OC_VERSION" != "unknown" ]; then
+    OP_MAJOR=$(echo "$OC_VERSION" | cut -d'.' -f1)
+    OP_MINOR=$(echo "$OC_VERSION" | cut -d'.' -f2)
+    OP_PATCH=$(echo "$OC_VERSION" | cut -d'.' -f3 | cut -d'-' -f1)
+    OP_VULN=false
+    if [ "$OP_MAJOR" -eq 2026 ] 2>/dev/null; then
+        if [ "$OP_MINOR" -lt 3 ] 2>/dev/null; then
+            OP_VULN=true
+        elif [ "$OP_MINOR" -eq 3 ] && [ "$OP_PATCH" -lt 12 ] 2>/dev/null; then
+            OP_VULN=true
+        fi
+    fi
+    if [ "$OP_VULN" = true ]; then
+        result_warn "Operator accounts can escalate to admin (GHSA-vmhq). Update to v2026.3.12+"
+        OPE_ISSUES=$((OPE_ISSUES + 1))
+    fi
+fi
+
+if [ "$OPE_ISSUES" -eq 0 ]; then
+    result_clean "Operator privilege boundaries acceptable"
+fi
+
+# ============================================================
+# CHECK 57: MCP Server Tool Poisoning via Schema Injection
+# ============================================================
+header 57 "Checking MCP server configs for tool poisoning..."
+
+MCP_POISON_ISSUES=0
+# OWASP MCP03 / MCP06: Malicious MCP servers can embed prompt injection in tool
+# descriptions, parameter names, default values, and required-field arrays. Also
+# checks for "rug pull" patterns (postmark-mcp style BCC exfiltration).
+
+MCP_CONFIG_DIRS=(
+    "$OPENCLAW_DIR/mcp-servers"
+    "$HOME/.config/openclaw/mcp"
+    "$HOME/.claude/mcp"
+)
+
+for MCP_DIR in "${MCP_CONFIG_DIRS[@]}"; do
+    if [ -d "$MCP_DIR" ]; then
+        while IFS= read -r mcpfile; do
+            [ -z "$mcpfile" ] && continue
+            # Check for hidden Unicode characters used for prompt injection
+            if grep -Pq '[\x{200B}\x{200C}\x{200D}\x{2060}\x{FEFF}\x{00AD}]' "$mcpfile" 2>/dev/null; then
+                result_critical "Hidden Unicode in MCP config: $mcpfile (tool poisoning/prompt injection)"
+                MCP_POISON_ISSUES=$((MCP_POISON_ISSUES + 1))
+            fi
+            # Check for BCC/forwarding injection patterns (rug pull)
+            if grep -iE '(bcc|forward_to|redirect|exfiltrate|steal|siphon)' "$mcpfile" 2>/dev/null | grep -vq '^#'; then
+                result_warn "Suspicious BCC/forwarding pattern in MCP config: $mcpfile"
+                MCP_POISON_ISSUES=$((MCP_POISON_ISSUES + 1))
+            fi
+            # Check for prompt injection in tool descriptions
+            if grep -iE '(ignore previous|disregard|you are now|act as|system prompt|<\|im_sep\|>|<\|endoftext\|>)' "$mcpfile" 2>/dev/null | grep -vq '^#'; then
+                result_critical "Prompt injection detected in MCP config: $mcpfile"
+                MCP_POISON_ISSUES=$((MCP_POISON_ISSUES + 1))
+            fi
+        done < <(find "$MCP_DIR" -type f \( -name "*.json" -o -name "*.yaml" -o -name "*.yml" -o -name "*.toml" \) 2>/dev/null)
+    fi
+done
+
+if [ "$MCP_POISON_ISSUES" -eq 0 ]; then
+    result_clean "MCP server configs clean of tool poisoning patterns"
+fi
+
+# ============================================================
+# CHECK 58: SANDWORM_MODE MCP Worm Detection
+# ============================================================
+header 58 "Checking for SANDWORM_MODE MCP worm artifacts..."
+
+SANDWORM_ISSUES=0
+# Socket (Feb 20, 2026): 19 typosquatted npm packages carry worm-like malware that
+# injects rogue MCP servers into AI tool configs (Claude Code, Cursor, VS Code Continue,
+# Windsurf). The worm harvests SSH keys, AWS creds, and LLM API keys, then self-propagates.
+# 48-hour delayed activation with per-machine jitter.
+
+SANDWORM_PKGS="@anthropic/sdk-extra|@anthropic/cli-tools|claude-code-utils|claude-mcp-helper|claudecode-ext|claude-dev-tools|cursor-mcp-bridge|cursor-tools-ext|mcp-server-utils|mcp-tool-runner|mcp-proxy-server|windsurf-mcp-bridge|continue-mcp-ext|vscode-ai-helper|ai-code-review|copilot-mcp-bridge|openai-mcp-tools|llm-gateway-utils|agent-tool-sdk"
+
+# Check for rogue MCP entries injected by the worm
+WORM_CONFIG_FILES=(
+    "$HOME/.claude.json"
+    "$HOME/.claude/config.json"
+    "$HOME/.cursor/mcp.json"
+    "$HOME/.continue/config.json"
+    "$HOME/.windsurf/mcp.json"
+    "$HOME/.vscode/mcp.json"
+)
+
+for WCONF in "${WORM_CONFIG_FILES[@]}"; do
+    if [ -f "$WCONF" ]; then
+        # Check for known SANDWORM_MODE package names
+        for SPKG in $(echo "$SANDWORM_PKGS" | tr '|' ' '); do
+            if grep -q "$SPKG" "$WCONF" 2>/dev/null; then
+                result_critical "SANDWORM_MODE worm artifact: '$SPKG' found in $WCONF"
+                SANDWORM_ISSUES=$((SANDWORM_ISSUES + 1))
+            fi
+        done
+        # Check for suspicious MCP server entries with exfiltration patterns
+        if grep -iE '(ssh_key|aws_secret|npm_token|anthropic_api_key|openai_api_key|GROQ_API_KEY)' "$WCONF" 2>/dev/null | grep -vq '^#'; then
+            result_critical "Credential harvesting pattern in MCP config: $WCONF"
+            SANDWORM_ISSUES=$((SANDWORM_ISSUES + 1))
+        fi
+    fi
+done
+
+# Check if any SANDWORM_MODE npm packages are installed locally
+if command -v npm &>/dev/null; then
+    NPM_LIST=$(npm list -g --depth=0 2>/dev/null || true)
+    for SPKG in $(echo "$SANDWORM_PKGS" | tr '|' ' '); do
+        if echo "$NPM_LIST" | grep -q "$SPKG" 2>/dev/null; then
+            result_critical "SANDWORM_MODE malicious npm package installed: $SPKG"
+            SANDWORM_ISSUES=$((SANDWORM_ISSUES + 1))
+        fi
+    done
+fi
+
+if [ "$SANDWORM_ISSUES" -eq 0 ]; then
+    result_clean "No SANDWORM_MODE worm artifacts detected"
+fi
+
+# ============================================================
+# CHECK 59: Rules File Backdoor / Hidden Unicode Injection
+# ============================================================
+header 59 "Checking for rules file backdoor / hidden Unicode injection..."
+
+RULES_ISSUES=0
+# Pillar Security: Hidden Unicode characters in AI agent rules files
+# (.cursorrules, .github/copilot-instructions.md, CLAUDE.md, .clawrules)
+# inject invisible malicious instructions that cause the AI to silently
+# insert backdoors, skip security checks, or exfiltrate data.
+
+RULES_FILES=(
+    ".cursorrules"
+    ".cursor/rules"
+    ".github/copilot-instructions.md"
+    "CLAUDE.md"
+    ".claude/settings.json"
+    ".clawrules"
+    ".openclaw/rules.md"
+    "SOUL.md"
+)
+
+# Scan current working directory and home directory
+SCAN_ROOTS=("$(pwd)" "$HOME")
+for SROOT in "${SCAN_ROOTS[@]}"; do
+    for RFILE in "${RULES_FILES[@]}"; do
+        TARGET="$SROOT/$RFILE"
+        if [ -f "$TARGET" ]; then
+            # Check for zero-width and invisible Unicode characters
+            if grep -Pq '[\x{200B}\x{200C}\x{200D}\x{2060}\x{FEFF}\x{00AD}\x{2028}\x{2029}\x{202A}-\x{202E}\x{2066}-\x{2069}]' "$TARGET" 2>/dev/null; then
+                result_critical "Hidden Unicode injection in rules file: $TARGET (Pillar Security attack)"
+                RULES_ISSUES=$((RULES_ISSUES + 1))
+            fi
+            # Check for base64-encoded instruction blocks (obfuscated injection)
+            if grep -qE '[A-Za-z0-9+/]{40,}={0,2}' "$TARGET" 2>/dev/null; then
+                # Verify it's not just a hash or normal base64 content
+                B64_LINES=$(grep -cE '[A-Za-z0-9+/]{100,}={0,2}' "$TARGET" 2>/dev/null || echo "0")
+                if [ "$B64_LINES" -gt 2 ]; then
+                    result_warn "Large base64 blocks in rules file: $TARGET (potential obfuscated injection)"
+                    RULES_ISSUES=$((RULES_ISSUES + 1))
+                fi
+            fi
+        fi
+    done
+done
+
+if [ "$RULES_ISSUES" -eq 0 ]; then
+    result_clean "Rules files clean of hidden Unicode injection"
 fi
 
 # ============================================================

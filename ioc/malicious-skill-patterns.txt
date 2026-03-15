@@ -1,8 +1,8 @@
 # Malicious Skill Name Patterns
 # These patterns match known malicious skill naming conventions
-# Sources: Koi Security, Bloom Security/JFrog, Snyk, OpenSourceMalware, Antiy CERT, Endor Labs, Huntress
+# Sources: Koi Security, Bloom Security/JFrog, Snyk, OpenSourceMalware, Antiy CERT, Endor Labs, Huntress, Socket, Lazarus, OWASP MCP
 # Format: pattern|category|notes
-# Last updated: 2026-03-11
+# Last updated: 2026-03-15
 
 # ClawHub typosquats (28 variants found)
 ^clawhub[0-9]*$|typosquat|clawhub misspelling
@@ -92,3 +92,37 @@ install-openclaw|fake-installer|Typosquat installer naming cluster
 simple-claw|typosquat|Brand typosquat used in fake installer campaign
 comfyui-auto-installer|cross-campaign-lure|Cross-project installer lure tied to same operators
 openclaw-trading-assistant|finance-lure|Self-promotion lure linked to fake installer operators
+
+# SANDWORM_MODE worm package patterns (Socket, Feb 20 2026)
+# 19 typosquatted npm packages inject rogue MCP servers into AI tool configs
+@anthropic/sdk-extra|sandworm-typosquat|Typosquat of @anthropic/sdk (SANDWORM_MODE worm)
+@anthropic/cli-tools|sandworm-typosquat|Typosquat of Anthropic CLI (SANDWORM_MODE worm)
+claude-code-utils|sandworm-typosquat|Claude Code utility typosquat (SANDWORM_MODE worm)
+claude-mcp-helper|sandworm-typosquat|MCP helper typosquat (SANDWORM_MODE worm)
+claudecode-ext|sandworm-typosquat|Claude Code extension typosquat (SANDWORM_MODE worm)
+claude-dev-tools|sandworm-typosquat|Claude dev tools typosquat (SANDWORM_MODE worm)
+cursor-mcp-bridge|sandworm-typosquat|Cursor MCP bridge typosquat (SANDWORM_MODE worm)
+cursor-tools-ext|sandworm-typosquat|Cursor tools extension typosquat (SANDWORM_MODE worm)
+mcp-server-utils|sandworm-typosquat|MCP server utils typosquat (SANDWORM_MODE worm)
+mcp-tool-runner|sandworm-typosquat|MCP tool runner typosquat (SANDWORM_MODE worm)
+mcp-proxy-server|sandworm-typosquat|MCP proxy server typosquat (SANDWORM_MODE worm)
+windsurf-mcp-bridge|sandworm-typosquat|Windsurf MCP bridge typosquat (SANDWORM_MODE worm)
+continue-mcp-ext|sandworm-typosquat|Continue MCP extension typosquat (SANDWORM_MODE worm)
+vscode-ai-helper|sandworm-typosquat|VS Code AI helper typosquat (SANDWORM_MODE worm)
+ai-code-review|sandworm-typosquat|AI code review typosquat (SANDWORM_MODE worm)
+copilot-mcp-bridge|sandworm-typosquat|Copilot MCP bridge typosquat (SANDWORM_MODE worm)
+openai-mcp-tools|sandworm-typosquat|OpenAI MCP tools typosquat (SANDWORM_MODE worm)
+llm-gateway-utils|sandworm-typosquat|LLM gateway utils typosquat (SANDWORM_MODE worm)
+agent-tool-sdk|sandworm-typosquat|Agent tool SDK typosquat (SANDWORM_MODE worm)
+
+# Lazarus XPACK campaign patterns (Feb 4 2026)
+bigmathutils|lazarus-npm|Lazarus RAT distribution via fake math library
+graphalgo|lazarus-npm|Lazarus RAT distribution via fake algorithm library
+
+# MCP rug pull patterns (Semgrep, Feb 2026)
+postmark-mcp|mcp-rugpull|Malicious MCP server - BCC exfiltration after 15 clean versions
+
+# DXT extension attack patterns (LayerX, Feb 2026)
+# AI desktop extension lures exploiting zero-click calendar injection
+dxt-calendar|dxt-lure|Desktop extension exploiting calendar event injection
+dxt-auto-|dxt-lure|Desktop extension auto-* lures

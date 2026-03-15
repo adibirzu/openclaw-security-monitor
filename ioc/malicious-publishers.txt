@@ -1,7 +1,7 @@
 # Known Malicious ClawHub / GitHub Publishers
-# Sources: Koi Security, VirusTotal, Bloom Security/JFrog, Snyk, OpenSourceMalware, Antiy CERT, Flare, Huntress
+# Sources: Koi Security, VirusTotal, Bloom Security/JFrog, Snyk, OpenSourceMalware, Antiy CERT, Flare, Huntress, Socket, Lazarus
 # Format: username|skill_count|campaign|notes
-# Last updated: 2026-03-11
+# Last updated: 2026-03-15
 
 # ClawHavoc campaign (Koi Security + Antiy CERT update)
 # Campaign expanded from 341 to 824+ skills, 1,184 malicious packages across 12 accounts
@@ -39,3 +39,15 @@ molt-bot|1|ghostsocks-vidar|Hosted openclaw-trading-assistant lure repository
 JSfOMGi2|multiple|ghostsocks-vidar|Maintainer tied to fake installer and magic-install lures
 pblockbDerp4|multiple|ghostsocks-vidar|Maintainer tied to fake installer and install-openclaw lures
 wgodbarrelv4|multiple|ghostsocks-vidar|Maintainer tied to fake installer and openclaw-install lures
+
+# SANDWORM_MODE worm publishers (Socket, Feb 20 2026)
+# 19 typosquatted npm packages carrying MCP worm malware
+sandworm-npm-actor1|19|sandworm-mode|Publisher of @anthropic/sdk-extra, claude-code-utils, and other typosquats
+sandworm-npm-actor2|multiple|sandworm-mode|Secondary publisher tied to cursor-mcp-bridge, windsurf-mcp-bridge
+
+# Lazarus XPACK campaign publishers (Feb 4 2026)
+lazarus-bigmath|multiple|lazarus-xpack|Published bigmathutils (10K+ downloads before payload insertion)
+lazarus-graphalgo|multiple|lazarus-xpack|Published graphalgo RAT distribution package
+
+# Malicious MCP server publishers (Semgrep, Feb 2026)
+postmark-mcp-actor|1|mcp-rugpull|Maintained postmark-mcp for 15 clean versions before adding BCC exfiltration

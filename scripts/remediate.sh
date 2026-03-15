@@ -10,7 +10,7 @@
 #   ./remediate.sh --dry-run          # Show what would be fixed without changing anything
 #   ./remediate.sh --check N          # Run remediation for check N only (skip scan)
 #   ./remediate.sh --check N --dry-run # Dry-run a single check
-#   ./remediate.sh --all              # Run all 51 remediation scripts (skip scan)
+#   ./remediate.sh --all              # Run all 59 remediation scripts (skip scan)
 #
 # Exit codes: 0=fixes applied, 1=some fixes failed, 2=nothing to fix
 set -uo pipefail
@@ -21,7 +21,7 @@ OPENCLAW_DIR="${OPENCLAW_HOME:-$HOME/.openclaw}"
 LOG_DIR="$OPENCLAW_DIR/logs"
 LOG_FILE="$LOG_DIR/remediation.log"
 TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-TOTAL_CHECKS=51
+TOTAL_CHECKS=59
 
 # Counters
 TOTAL_RUN=0

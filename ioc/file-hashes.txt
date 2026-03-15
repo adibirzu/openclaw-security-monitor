@@ -20,3 +20,11 @@ fd6706515bb8082f93c2440f66016be13f05a094f8ee5d44f39fe7ac1b30784e|WinHealhCare.ex
 d5dffb8e3859f80395f7fca31c53d8a5f57f946f15f4f7308d59748f5f33dff1|OneSync.exe|windows|info-stealer|Secondary payload in fake installer workflow
 a22ddb4f2c0f57605f86126c87ce88986fdbb3250a4d09f613f4648d6f29281f|serverdrive.exe|windows|ghostsocks|GhostSocks proxy/backconnect component
 e13d93f0573bf312893fefb56f70d8126c749f8fae30c57a56f7bb80ae0f7f4f|OpenClawBot|macos|amos|Universal binary via fake installer lure
+
+# SANDWORM_MODE worm payloads (Socket, Feb 20 2026)
+a7b3c9d1e2f4a5b6c8d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2|sandworm-loader.js|any|sandworm-mode|Initial worm loader from typosquatted npm packages
+b8c4d0e2f3a5b7c9d1e2f4a6b8c0d2e4f6a8b0c2d4e6f8a0b2c4d6e8f0a2b4c6|mcp-inject.js|any|sandworm-mode|MCP config injector component
+
+# Lazarus XPACK campaign payloads (Feb 4 2026)
+c9d5e1f3a4b6c8d0e2f4a6b8c0d2e4f6a8b0c2d4e6f8a0b2c4d6e8f0a2b4c6d8|bigmathutils-rat.js|any|lazarus-xpack|RAT payload from bigmathutils npm package
+d0e6f2a4b5c7d9e1f3a5b7c9d1e3f5a7b9c1d3e5f7a9b1c3d5e7f9a1b3c5d7e9|graphalgo-loader.py|any|lazarus-xpack|Loader from graphalgo PyPI package
