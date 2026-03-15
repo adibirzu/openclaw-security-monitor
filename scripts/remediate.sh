@@ -113,7 +113,7 @@ run_check_script() {
     echo "--- Check $padded: $name ($status) ---"
 
     local exit_code=0
-    bash "$script" "${PASSTHROUGH_ARGS[@]}" || exit_code=$?
+    bash "$script" ${PASSTHROUGH_ARGS[@]+"${PASSTHROUGH_ARGS[@]}"} || exit_code=$?
 
     case $exit_code in
         0)
