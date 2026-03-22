@@ -2,7 +2,7 @@
 name: openclaw-security-monitor
 description: Proactive security monitoring, threat scanning, and auto-remediation for OpenClaw deployments
 tags: [security, scan, remediation, monitoring, threat-detection, hardening]
-version: 4.2.1
+version: 5.0.0
 author: Adrian Birzu
 user-invocable: true
 disable-model-invocation: true
@@ -17,66 +17,48 @@ Real-time security monitoring with threat intelligence from ClawHavoc research, 
 Note: Replace `<skill-dir>` with the actual folder name where this skill is installed (commonly `openclaw-security-monitor` or `security-monitor`).
 
 ### /security-scan
-Run a comprehensive 59-point security scan:
+Run a comprehensive 41-point security scan:
 1. Known C2 IPs (ClawHavoc: 91.92.242.x, 95.92.242.x, 54.91.154.110)
-2. AMOS stealer / AuthTool markers
+2. Malware signatures & obfuscation (AMOS stealer, base64 payloads, binary downloads)
 3. Reverse shells & backdoors (bash, python, perl, ruby, php, lua)
 4. Credential exfiltration endpoints (webhook.site, pipedream, ngrok, etc.)
 5. Crypto wallet targeting (seed phrases, private keys, exchange APIs)
 6. Curl-pipe / download attacks
-7. Sensitive file permission audit
+7. File & credential permission audit (config files, credentials dir, sessions)
 8. Skill integrity hash verification
-9. SKILL.md shell injection patterns (Prerequisites-based attacks)
-10. Memory poisoning detection (SOUL.md, MEMORY.md, IDENTITY.md)
-11. Base64 obfuscation detection (glot.io-style payloads)
-12. External binary downloads (.exe, .dmg, .pkg, password-protected ZIPs)
-13. Gateway security configuration audit
-14. WebSocket origin validation (CVE-2026-25253)
-15. Known malicious publisher detection (hightower6eu, etc.)
-16. Sensitive environment/credential file leakage
-17. DM policy audit (open/wildcard channel access)
-18. Tool policy / elevated tools audit
-19. Sandbox configuration check
-20. mDNS/Bonjour exposure detection
-21. Session & credential file permissions
-22. Persistence mechanism scan (LaunchAgents, crontabs, systemd)
-23. Plugin/extension security audit
-24. Log redaction settings audit
-25. Reverse proxy localhost trust bypass detection
-26. Exec-approvals configuration audit (CVE-2026-25253 exploit chain)
-27. Docker container security (root, socket mount, privileged mode)
-28. Node.js version / CVE-2026-21636 permission model bypass
-29. Plaintext credential detection in config files
-30. VS Code extension trojan detection (fake ClawdBot extensions)
-31. Internet exposure detection (non-loopback gateway binding)
-32. MCP server security audit (tool poisoning, prompt injection)
-33. ClawJacked WebSocket brute-force protection (v2026.2.25+)
-34. SSRF protection audit (CVE-2026-26322, CVE-2026-27488)
-35. Exec safeBins validation bypass (CVE-2026-28363, CVSS 9.9)
-36. ACP permission auto-approval audit (GHSA-7jx5)
-37. PATH hijacking / command hijacking (GHSA-jqpq-mgvm-f9r6)
-38. Skill env override host injection (GHSA-82g8-464f-2mv7)
-39. macOS deep link truncation (CVE-2026-26320)
-40. Log poisoning / WebSocket header injection
-41. Browser Relay CDP unauthenticated access (CVE-2026-28458, CVSS 7.5)
-42. Browser control API path traversal (CVE-2026-28462, CVSS 7.5)
-43. Exec-approvals shell expansion bypass (CVE-2026-28463)
-44. Approval field injection / exec gating bypass (CVE-2026-28466)
-45. Sandbox browser bridge auth bypass (CVE-2026-28468)
-46. Webhook DoS — oversized payloads (CVE-2026-28478)
-47. TAR archive path traversal (CVE-2026-28453)
-48. fetchWithGuard memory exhaustion DoS (CVE-2026-29609, CVSS 7.5)
-49. /agent/act HTTP route unauthenticated access (CVE-2026-28485)
-50. Command hijacking via PATH — unsafe resolution (CVE-2026-29610)
-51. SHA-1 sandbox cache key poisoning (CVE-2026-28479, CVSS 8.7)
-52. Google Chat webhook cross-account bypass (CVE-2026-28469, CVSS 9.8)
-53. Gateway WebSocket device identity skip (CVE-2026-28472)
-54. Cross-Site WebSocket Hijacking in trusted-proxy (CVE-2026-32302)
-55. Device pairing credential exposure (GHSA-7h7g-x2px-94hj)
-56. Operator privilege escalation (GHSA-vmhq-cqm9-6p7q)
-57. MCP server tool poisoning via schema injection (OWASP MCP03/MCP06)
-58. SANDWORM_MODE MCP worm detection (Socket, Feb 2026)
-59. Rules file backdoor / hidden Unicode injection (Pillar Security)
+9. AI prompt injection & instruction manipulation (SKILL.md injection, memory poisoning, MCP tool poisoning, rules file backdoor)
+10. Gateway security configuration audit
+11. WebSocket security (CVE-2026-25253, ClawJacked, device identity skip, CSWSH)
+12. Known malicious publisher detection
+13. Credential leakage & plaintext secrets (env access, hardcoded API keys)
+14. DM, tool & sandbox policies (open DM, elevated tools, disabled sandbox)
+15. mDNS/Bonjour exposure detection
+16. Persistence mechanism scan (LaunchAgents, crontabs, systemd)
+17. Log security & poisoning (redaction, ANSI injection, header injection)
+18. Plugin/extension security audit
+19. Docker container security (root, socket mount, privileged mode)
+20. Authentication & route security (proxy bypass, CDP auth, browser bridge, /agent/act)
+21. Exec guardrails & approval security (safeBins bypass CVE-2026-28363, shell expansion CVE-2026-28463, approval injection CVE-2026-28466, replay)
+22. Node.js version / CVE-2026-21636 permission model bypass
+23. VS Code extension trojan detection
+24. Internet exposure detection
+25. MCP server security audit
+26. PATH hijacking & command resolution (GHSA-jqpq, CVE-2026-29610)
+27. SSRF protection (CVE-2026-26322, CVE-2026-27488)
+28. Path traversal & file handling (deep link CVE-2026-26320, browser control CVE-2026-28462, TAR CVE-2026-28453)
+29. DoS protection (webhook CVE-2026-28478, fetchWithGuard CVE-2026-29609)
+30. ACP permission auto-approval (GHSA-7jx5)
+31. Skill env override host injection (GHSA-82g8)
+32. Privilege escalation & scope abuse (pairing creds GHSA-7h7g, operator GHSA-vmhq, shared-auth GHSA-rqpp)
+33. SHA-1 sandbox cache key poisoning (CVE-2026-28479, CVSS 8.7)
+34. Google Chat webhook cross-account bypass (CVE-2026-28469, CVSS 9.8)
+35. SANDWORM_MODE MCP worm detection
+36. Workspace plugin auto-discovery (GHSA-99qw)
+37. Symlink traversal (CVE-2026-32013, CVE-2026-32055)
+38. Sandbox escape & session inheritance (CVE-2026-32048, CVE-2026-32051)
+39. Shell environment RCE (CVE-2026-32056, CVE-2026-27566)
+40. VNC & observer authentication (CVE-2026-32064)
+41. Device identity & metadata spoofing (CVE-2026-32014, CVE-2026-32042, CVE-2026-32025)
 
 ```bash
 bash ~/.openclaw/workspace/skills/<skill-dir>/scripts/scan.sh
@@ -99,7 +81,7 @@ bash ~/.openclaw/workspace/skills/<skill-dir>/scripts/network-check.sh
 ```
 
 ### /security-remediate
-Scan-driven remediation: runs `scan.sh`, skips CLEAN checks, and executes per-check remediation scripts for each WARNING/CRITICAL finding. Includes 59 individual scripts covering file permissions, exfiltration domain blocking, tool deny lists, gateway hardening, sandbox configuration, credential auditing, ClawJacked protection, SSRF hardening, PATH hijacking cleanup, log poisoning remediation, /agent/act hardening, SHA-1 cache key migration, Google Chat webhook hardening, WebSocket identity enforcement, MCP tool poisoning quarantine, SANDWORM_MODE worm cleanup, and rules file Unicode sanitization.
+Scan-driven remediation: runs `scan.sh`, skips CLEAN checks, and executes per-check remediation scripts for each WARNING/CRITICAL finding. Includes 41 individual scripts covering file permissions, exfiltration domain blocking, tool deny lists, gateway hardening, sandbox configuration, credential auditing, ClawJacked protection, SSRF hardening, PATH hijacking cleanup, log poisoning remediation, /agent/act hardening, SHA-1 cache key migration, Google Chat webhook hardening, WebSocket identity enforcement, MCP tool poisoning quarantine, SANDWORM_MODE worm cleanup, rules file Unicode sanitization, workspace plugin auto-loading, shared-auth scope abuse, and exec approval replay.
 
 ```bash
 # Full scan + remediate (interactive)
@@ -115,7 +97,7 @@ bash ~/.openclaw/workspace/skills/<skill-dir>/scripts/remediate.sh --dry-run
 # Remediate a single check
 bash ~/.openclaw/workspace/skills/<skill-dir>/scripts/remediate.sh --check 7 --dry-run
 
-# Run all 59 remediation scripts (skip scan)
+# Run all 41 remediation scripts (skip scan)
 bash ~/.openclaw/workspace/skills/<skill-dir>/scripts/remediate.sh --all
 ```
 
@@ -123,7 +105,7 @@ Flags:
 - `--yes` / `-y` — Skip confirmation prompts only when `OPENCLAW_ALLOW_UNATTENDED_REMEDIATE=1`
 - `--dry-run` — Show what would be fixed without making changes
 - `--check N` — Run remediation for check N only (skip scan)
-- `--all` — Run all 59 remediation scripts without scanning first
+- `--all` — Run all 41 remediation scripts without scanning first
 
 Exit codes: 0=fixes applied, 1=some fixes failed, 2=nothing to fix
 

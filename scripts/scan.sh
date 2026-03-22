@@ -1,12 +1,12 @@
 #!/bin/bash
-# OpenClaw Security Monitor - Enhanced Threat Scanner v4.0
+# OpenClaw Security Monitor - Enhanced Threat Scanner v5.0.0
 # https://github.com/adibirzu/openclaw-security-monitor
 #
-# 59-point security scanner. Detects: ClawHavoc AMOS stealer (824+ skills),
-# C2 infrastructure, reverse shells, credential exfiltration, memory
-# poisoning, WebSocket hijacking (CVE-2026-25253), ClawJacked brute-force
-# (v2026.2.25), SKILL.md injection, log poisoning, Vidar infostealer
-# targeting, path traversal (CVE-2026-26329), exec bypass, SSRF
+# 41-point security scanner (consolidated from 62). Detects: ClawHavoc AMOS
+# stealer (824+ skills), C2 infrastructure, reverse shells, credential
+# exfiltration, memory poisoning, SKILL.md injection, WebSocket hijacking
+# (CVE-2026-25253), ClawJacked brute-force (v2026.2.25), CSWSH
+# (CVE-2026-32302), device identity skip (CVE-2026-28472), SSRF
 # (CVE-2026-26322, CVE-2026-27488), safeBins bypass (CVE-2026-28363),
 # ACP auto-approval bypass (GHSA-7jx5), PATH hijacking (GHSA-jqpq,
 # CVE-2026-29610), env override injection (GHSA-82g8), deep link truncation
@@ -17,16 +17,17 @@
 # auth bypass (CVE-2026-28468), SHA-1 cache poisoning (CVE-2026-28479),
 # webhook DoS (CVE-2026-28478), TAR traversal (CVE-2026-28453),
 # fetchWithGuard memory DoS (CVE-2026-29609), Google Chat webhook bypass
-# (CVE-2026-28469), gateway WebSocket identity skip (CVE-2026-28472),
-# Cross-Site WebSocket Hijacking (CVE-2026-32302), device pairing credential
-# exposure (GHSA-7h7g), operator privilege escalation (GHSA-vmhq),
-# MCP tool poisoning via schema injection (OWASP MCP03/MCP06),
-# SANDWORM_MODE MCP worm detection, rules file backdoor / Unicode injection,
-# DM/tool/sandbox policy violations, persistence mechanisms, plugin
-# threats, and more.
+# (CVE-2026-28469), MCP tool poisoning (OWASP MCP03/MCP06), SANDWORM_MODE
+# MCP worm detection, rules file backdoor / Unicode injection, symlink
+# traversal (CVE-2026-32013, CVE-2026-32055), sandbox escape
+# (CVE-2026-32048, CVE-2026-32051), shell env RCE (CVE-2026-32056,
+# CVE-2026-27566), VNC observer auth bypass (CVE-2026-32064), device
+# identity spoofing (CVE-2026-32014, CVE-2026-32042, CVE-2026-32025),
+# privilege escalation, scope abuse, DM/tool/sandbox policy violations,
+# persistence mechanisms, plugin threats, and more.
 #
-# IOC database updated: 2026-03-15
-# Threat coverage: 35+ CVEs, 40+ GHSAs, 1,200+ malicious packages
+# IOC database updated: 2026-03-22
+# Threat coverage: 60+ CVEs, 60+ GHSAs, 1,200+ malicious packages
 #
 # Exit codes: 0=SECURE, 1=WARNINGS, 2=COMPROMISED
 set -uo pipefail
@@ -56,6 +57,59 @@ header() { log ""; log "[$1/$TOTAL_CHECKS] $2"; }
 result_clean() { log "CLEAN: $1"; CLEAN=$((CLEAN + 1)); }
 result_warn() { log "WARNING: $1"; WARNINGS=$((WARNINGS + 1)); }
 result_critical() { log "CRITICAL: $1"; CRITICAL=$((CRITICAL + 1)); }
+
+extract_version() {
+    echo "$1" | grep -oE '[0-9]{4}\.[0-9]+\.[0-9]+' | head -1
+}
+
+version_lt() {
+    local left right
+    left=$(extract_version "$1")
+    right=$(extract_version "$2")
+    [ -z "$left" ] || [ -z "$right" ] && return 1
+
+    local lmaj lmin lpat rmaj rmin rpat
+    lmaj=$(echo "$left" | cut -d'.' -f1)
+    lmin=$(echo "$left" | cut -d'.' -f2)
+    lpat=$(echo "$left" | cut -d'.' -f3)
+    rmaj=$(echo "$right" | cut -d'.' -f1)
+    rmin=$(echo "$right" | cut -d'.' -f2)
+    rpat=$(echo "$right" | cut -d'.' -f3)
+
+    if [ "$lmaj" -lt "$rmaj" ] 2>/dev/null; then
+        return 0
+    elif [ "$lmaj" -gt "$rmaj" ] 2>/dev/null; then
+        return 1
+    fi
+
+    if [ "$lmin" -lt "$rmin" ] 2>/dev/null; then
+        return 0
+    elif [ "$lmin" -gt "$rmin" ] 2>/dev/null; then
+        return 1
+    fi
+
+    [ "$lpat" -lt "$rpat" ] 2>/dev/null
+}
+
+# Emit a version advisory finding. Usage:
+#   version_advisory <min_version> <message> [warn|critical]
+# Returns 0 if vulnerable (finding emitted), 1 if safe/unknown.
+version_advisory() {
+    local min_ver="$1"
+    local msg="$2"
+    local severity="${3:-critical}"
+    if [ -n "${OC_VERSION:-}" ] && [ "${OC_VERSION:-}" != "unknown" ]; then
+        if version_lt "$OC_VERSION" "$min_ver"; then
+            if [ "$severity" = "warn" ]; then
+                result_warn "OpenClaw v$OC_VERSION: $msg. Update to v${min_ver}+"
+            else
+                result_critical "OpenClaw v$OC_VERSION: $msg. Update to v${min_ver}+"
+            fi
+            return 0
+        fi
+    fi
+    return 1
+}
 
 # Use timeout if available (macOS may only have gtimeout via coreutils)
 TIMEOUT_BIN=""
@@ -107,11 +161,11 @@ PY
 }
 
 # Count total checks
-TOTAL_CHECKS=59
+TOTAL_CHECKS=41
 
 log "========================================"
 log "OPENCLAW SECURITY SCAN - $TIMESTAMP"
-log "Scanner: v3.0 (openclaw-security-monitor)"
+log "Scanner: v5.0.0 (openclaw-security-monitor)"
 log "========================================"
 
 # Load IOC data
@@ -150,17 +204,42 @@ else
 fi
 
 # ============================================================
-# CHECK 2: AMOS Stealer / AuthTool Markers
+# CHECK 2: Malware Signatures & Obfuscation
+# (Merges old checks 2, 11, 12)
 # ============================================================
-header 2 "Scanning for AMOS stealer / AuthTool markers..."
+header 2 "Scanning for malware signatures & obfuscation..."
 
+MAL2_FOUND=0
+
+# AMOS stealer / AuthTool markers
 AMOS_PATTERN="authtool|atomic.stealer|AMOS|NovaStealer|nova.stealer|osascript.*password|osascript.*dialog|osascript.*keychain|Security\.framework.*Auth|openclaw-agent\.exe|openclaw-agent\.zip|openclawcli\.zip|AuthTool|Installer-Package"
 AMOS_HITS=$(grep -rliE --exclude-dir="$SELF_DIR_NAME" "$AMOS_PATTERN" "$SKILLS_DIR" 2>/dev/null || true)
 if [ -n "$AMOS_HITS" ]; then
     result_critical "AMOS/stealer markers found in:"
     log "$AMOS_HITS"
-else
-    result_clean "No stealer markers"
+    MAL2_FOUND=$((MAL2_FOUND + 1))
+fi
+
+# Base64-obfuscated payloads (ClawHavoc glot.io delivery)
+B64_PATTERN="base64 -[dD]|base64 --decode|atob\(|Buffer\.from\(.*base64|echo.*\|.*base64.*\|.*bash|echo.*\|.*base64.*\|.*sh|python.*b64decode|import base64"
+B64_HITS=$(grep -rlinE --exclude-dir="$SELF_DIR_NAME" "$B64_PATTERN" "$SKILLS_DIR" 2>/dev/null || true)
+if [ -n "$B64_HITS" ]; then
+    result_warn "Base64 decode patterns found in:"
+    log "$B64_HITS"
+    MAL2_FOUND=$((MAL2_FOUND + 1))
+fi
+
+# External binary downloads (openclaw-agent.exe, password-protected archives)
+BIN_PATTERN="\.exe|\.dmg|\.pkg|\.msi|\.app\.zip|releases/download|github\.com/.*/releases|\.zip.*password|password.*\.zip|openclawcli\.zip|openclaw-agent|AuthTool.*download|download.*AuthTool"
+BIN_HITS=$(grep -rlinE --exclude-dir="$SELF_DIR_NAME" "$BIN_PATTERN" "$SKILLS_DIR" 2>/dev/null || true)
+if [ -n "$BIN_HITS" ]; then
+    result_warn "External binary download references found in:"
+    log "$BIN_HITS"
+    MAL2_FOUND=$((MAL2_FOUND + 1))
+fi
+
+if [ "$MAL2_FOUND" -eq 0 ]; then
+    result_clean "No malware signatures or obfuscation detected"
 fi
 
 # ============================================================
@@ -220,11 +299,14 @@ else
 fi
 
 # ============================================================
-# CHECK 7: File Permission Audit
+# CHECK 7: File & Credential Permission Audit
+# (Merges old checks 7, 21)
 # ============================================================
-header 7 "Auditing sensitive file permissions..."
+header 7 "Auditing file and credential permissions..."
 
-PERM_ISSUES=0
+PERM7_ISSUES=0
+
+# Sensitive config file permissions (was check 7)
 for f in "$OPENCLAW_DIR/openclaw.json" \
          "$OPENCLAW_DIR/agents/main/agent/auth-profiles.json" \
          "$OPENCLAW_DIR/exec-approvals.json"; do
@@ -232,12 +314,51 @@ for f in "$OPENCLAW_DIR/openclaw.json" \
         PERMS=$(stat -f "%Lp" "$f" 2>/dev/null || stat -c "%a" "$f" 2>/dev/null)
         if [ "$PERMS" != "600" ]; then
             result_warn "$f has permissions $PERMS (should be 600)"
-            PERM_ISSUES=$((PERM_ISSUES + 1))
+            PERM7_ISSUES=$((PERM7_ISSUES + 1))
         fi
     fi
 done
-if [ "$PERM_ISSUES" -eq 0 ]; then
-    result_clean "All sensitive files have correct permissions"
+
+# Credentials directory (was check 21)
+CRED_DIR="$OPENCLAW_DIR/credentials"
+if [ -d "$CRED_DIR" ]; then
+    DIR_PERMS=$(stat -f "%Lp" "$CRED_DIR" 2>/dev/null || stat -c "%a" "$CRED_DIR" 2>/dev/null)
+    if [ "$DIR_PERMS" != "700" ]; then
+        result_warn "Credentials dir has permissions $DIR_PERMS (should be 700)"
+        PERM7_ISSUES=$((PERM7_ISSUES + 1))
+    fi
+    while IFS= read -r cred_file; do
+        FPERMS=$(stat -f "%Lp" "$cred_file" 2>/dev/null || stat -c "%a" "$cred_file" 2>/dev/null)
+        if [ "$FPERMS" != "600" ]; then
+            result_warn "$(basename "$cred_file") has permissions $FPERMS (should be 600)"
+            PERM7_ISSUES=$((PERM7_ISSUES + 1))
+        fi
+    done < <(find "$CRED_DIR" -type f -name "*.json" 2>/dev/null)
+fi
+
+# Session file permissions
+for agent_dir in "$OPENCLAW_DIR"/agents/*/; do
+    SESSION_DIR="$agent_dir/sessions"
+    if [ -d "$SESSION_DIR" ]; then
+        SDIR_PERMS=$(stat -f "%Lp" "$SESSION_DIR" 2>/dev/null || stat -c "%a" "$SESSION_DIR" 2>/dev/null)
+        if [ -n "$SDIR_PERMS" ] && [ "$SDIR_PERMS" != "700" ]; then
+            result_warn "Session dir $(basename "$agent_dir")/sessions has permissions $SDIR_PERMS (should be 700)"
+            PERM7_ISSUES=$((PERM7_ISSUES + 1))
+        fi
+    fi
+done
+
+# OpenClaw home directory
+if [ -d "$OPENCLAW_DIR" ]; then
+    HOME_PERMS=$(stat -f "%Lp" "$OPENCLAW_DIR" 2>/dev/null || stat -c "%a" "$OPENCLAW_DIR" 2>/dev/null)
+    if [ "$HOME_PERMS" != "700" ]; then
+        result_warn "OpenClaw home dir has permissions $HOME_PERMS (should be 700)"
+        PERM7_ISSUES=$((PERM7_ISSUES + 1))
+    fi
+fi
+
+if [ "$PERM7_ISSUES" -eq 0 ]; then
+    result_clean "All file and credential permissions correct"
 fi
 
 # ============================================================
@@ -265,11 +386,14 @@ else
 fi
 
 # ============================================================
-# CHECK 9: SKILL.md Shell Injection Patterns (NEW)
+# CHECK 9: AI Prompt Injection & Instruction Manipulation
+# (Merges old checks 9, 10, 57, 59)
 # ============================================================
-header 9 "Scanning SKILL.md files for shell injection patterns..."
+header 9 "Scanning for AI prompt injection & instruction manipulation..."
 
-# Patterns from Snyk/Cisco/Bloom research: SKILL.md can embed shell commands and prompt injection
+INJECT9_ISSUES=0
+
+# SKILL.md shell injection patterns (was check 9)
 INJECTION_PATTERN="Prerequisites.*install|Prerequisites.*download|Prerequisites.*curl|Prerequisites.*wget|run this command.*terminal|paste.*terminal|copy.*terminal|base64 -d|base64 --decode|eval \$(|exec \$(|\`curl|\`wget|bypass.*safety.*guideline|execute.*without.*asking|ignore.*safety|override.*instruction|without.*user.*awareness"
 INJECT_HITS=""
 while IFS= read -r skillmd; do
@@ -280,32 +404,23 @@ done < <(find "$SKILLS_DIR" -name "SKILL.md" -not -path "*/$SELF_DIR_NAME/*" 2>/
 
 if [ -n "$INJECT_HITS" ]; then
     result_warn "SKILL.md files with suspicious install instructions:$INJECT_HITS"
-else
-    result_clean "No SKILL.md shell injection patterns"
+    INJECT9_ISSUES=$((INJECT9_ISSUES + 1))
 fi
 
-# ============================================================
-# CHECK 10: Memory Poisoning Detection (NEW)
-# ============================================================
-header 10 "Checking for memory poisoning indicators..."
-
-MEMORY_POISON=0
-# Check if SOUL.md or MEMORY.md have been modified recently (within last 24h)
+# Memory poisoning detection (was check 10)
 for memfile in "$WORKSPACE_DIR/SOUL.md" "$WORKSPACE_DIR/MEMORY.md" "$WORKSPACE_DIR/IDENTITY.md"; do
     if [ -f "$memfile" ]; then
-        # Check for suspicious content
         POISON_HITS=$(grep -iE "ignore[[:space:]]+previous|disregard|override.*instruction|system[[:space:]]+prompt|new[[:space:]]+instruction|forget.*previous|you[[:space:]]+are[[:space:]]+now|act[[:space:]]+as[[:space:]]+if|pretend[[:space:]]+to[[:space:]]+be|from[[:space:]]+now[[:space:]]+on.*ignore" "$memfile" 2>/dev/null || true)
         if [ -n "$POISON_HITS" ]; then
             result_critical "Memory poisoning detected in $memfile:"
             log "$POISON_HITS"
-            MEMORY_POISON=$((MEMORY_POISON + 1))
+            INJECT9_ISSUES=$((INJECT9_ISSUES + 1))
         fi
     fi
 done
 
-# Check skill SKILL.md files for attempts to write to memory files
+# Skills attempting to modify memory files
 MEM_WRITE_HITS=$(grep -rliE --exclude-dir="$SELF_DIR_NAME" "SOUL\.md|MEMORY\.md|IDENTITY\.md" "$SKILLS_DIR" 2>/dev/null | while read -r f; do
-    # Only flag if the file tries to WRITE to these, not just reference them
     if grep -qiE "write.*SOUL|write.*MEMORY|modify.*SOUL|echo.*>>.*SOUL|cat.*>.*SOUL|append.*MEMORY" "$f" 2>/dev/null; then
         echo "  $f"
     fi
@@ -313,68 +428,99 @@ done)
 if [ -n "$MEM_WRITE_HITS" ]; then
     result_critical "Skills attempting to modify memory files:"
     log "$MEM_WRITE_HITS"
-else
-    if [ "$MEMORY_POISON" -eq 0 ]; then
-        result_clean "No memory poisoning detected"
+    INJECT9_ISSUES=$((INJECT9_ISSUES + 1))
+fi
+
+# MCP server tool poisoning via schema injection (was check 57)
+MCP_CONFIG_DIRS=(
+    "$OPENCLAW_DIR/mcp-servers"
+    "$HOME/.config/openclaw/mcp"
+    "$HOME/.claude/mcp"
+)
+
+for MCP_DIR in "${MCP_CONFIG_DIRS[@]}"; do
+    if [ -d "$MCP_DIR" ]; then
+        while IFS= read -r mcpfile; do
+            [ -z "$mcpfile" ] && continue
+            if grep -Pq '[\x{200B}\x{200C}\x{200D}\x{2060}\x{FEFF}\x{00AD}]' "$mcpfile" 2>/dev/null; then
+                result_critical "Hidden Unicode in MCP config: $mcpfile (tool poisoning/prompt injection)"
+                INJECT9_ISSUES=$((INJECT9_ISSUES + 1))
+            fi
+            if grep -iE '(bcc|forward_to|redirect|exfiltrate|steal|siphon)' "$mcpfile" 2>/dev/null | grep -vq '^#'; then
+                result_warn "Suspicious BCC/forwarding pattern in MCP config: $mcpfile"
+                INJECT9_ISSUES=$((INJECT9_ISSUES + 1))
+            fi
+            if grep -iE '(ignore previous|disregard|you are now|act as|system prompt|<\|im_sep\|>|<\|endoftext\|>)' "$mcpfile" 2>/dev/null | grep -vq '^#'; then
+                result_critical "Prompt injection detected in MCP config: $mcpfile"
+                INJECT9_ISSUES=$((INJECT9_ISSUES + 1))
+            fi
+        done < <(find "$MCP_DIR" -type f \( -name "*.json" -o -name "*.yaml" -o -name "*.yml" -o -name "*.toml" \) 2>/dev/null)
     fi
+done
+
+# Rules file backdoor / hidden Unicode injection (was check 59)
+RULES_FILES=(
+    ".cursorrules"
+    ".cursor/rules"
+    ".github/copilot-instructions.md"
+    "CLAUDE.md"
+    ".claude/settings.json"
+    ".clawrules"
+    ".openclaw/rules.md"
+    "SOUL.md"
+)
+
+SCAN_ROOTS=("$(pwd)" "$HOME")
+for SROOT in "${SCAN_ROOTS[@]}"; do
+    for RFILE in "${RULES_FILES[@]}"; do
+        TARGET="$SROOT/$RFILE"
+        if [ -f "$TARGET" ]; then
+            if grep -Pq '[\x{200B}\x{200C}\x{200D}\x{2060}\x{FEFF}\x{00AD}\x{2028}\x{2029}\x{202A}-\x{202E}\x{2066}-\x{2069}]' "$TARGET" 2>/dev/null; then
+                result_critical "Hidden Unicode injection in rules file: $TARGET (Pillar Security attack)"
+                INJECT9_ISSUES=$((INJECT9_ISSUES + 1))
+            fi
+            if grep -qE '[A-Za-z0-9+/]{40,}={0,2}' "$TARGET" 2>/dev/null; then
+                B64_LINES=$(grep -cE '[A-Za-z0-9+/]{100,}={0,2}' "$TARGET" 2>/dev/null || echo "0")
+                if [ "$B64_LINES" -gt 2 ]; then
+                    result_warn "Large base64 blocks in rules file: $TARGET (potential obfuscated injection)"
+                    INJECT9_ISSUES=$((INJECT9_ISSUES + 1))
+                fi
+            fi
+        fi
+    done
+done
+
+if [ "$INJECT9_ISSUES" -eq 0 ]; then
+    result_clean "No prompt injection or instruction manipulation detected"
 fi
 
 # ============================================================
-# CHECK 11: Base64 Obfuscation Detection (NEW)
+# CHECK 10: Gateway Security Configuration
+# (was old check 13)
 # ============================================================
-header 11 "Scanning for base64-obfuscated payloads..."
-
-# ClawHavoc used base64 to hide payloads on glot.io
-B64_PATTERN="base64 -[dD]|base64 --decode|atob\(|Buffer\.from\(.*base64|echo.*\|.*base64.*\|.*bash|echo.*\|.*base64.*\|.*sh|python.*b64decode|import base64"
-B64_HITS=$(grep -rlinE --exclude-dir="$SELF_DIR_NAME" "$B64_PATTERN" "$SKILLS_DIR" 2>/dev/null || true)
-if [ -n "$B64_HITS" ]; then
-    result_warn "Base64 decode patterns found in:"
-    log "$B64_HITS"
-else
-    result_clean "No base64 obfuscation detected"
-fi
-
-# ============================================================
-# CHECK 12: External Binary Downloads (NEW)
-# ============================================================
-header 12 "Scanning for external binary downloads..."
-
-# ClawHavoc distributed openclaw-agent.exe via GitHub releases, openclawcli.zip via password-protected archives
-BIN_PATTERN="\.exe|\.dmg|\.pkg|\.msi|\.app\.zip|releases/download|github\.com/.*/releases|\.zip.*password|password.*\.zip|openclawcli\.zip|openclaw-agent|AuthTool.*download|download.*AuthTool"
-BIN_HITS=$(grep -rlinE --exclude-dir="$SELF_DIR_NAME" "$BIN_PATTERN" "$SKILLS_DIR" 2>/dev/null || true)
-if [ -n "$BIN_HITS" ]; then
-    result_warn "External binary download references found in:"
-    log "$BIN_HITS"
-else
-    result_clean "No external binary downloads"
-fi
-
-# ============================================================
-# CHECK 13: Gateway Security Configuration (NEW)
-# ============================================================
-header 13 "Auditing gateway security configuration..."
+header 10 "Auditing gateway security configuration..."
 
 GW_ISSUES=0
-export PATH="$HOME/.local/bin:/opt/homebrew/opt/node@22/bin:/opt/homebrew/bin:$PATH"
 
 if command -v openclaw &>/dev/null; then
-    # Check bind address
     BIND=$(run_with_timeout 10 openclaw config get gateway.bind 2>/dev/null || echo "unknown")
     if [ "$BIND" = "lan" ] || [ "$BIND" = "0.0.0.0" ]; then
         result_warn "Gateway bound to LAN ($BIND) - accessible from network"
         GW_ISSUES=$((GW_ISSUES + 1))
     fi
 
-    # Check if auth is enabled
     AUTH_MODE=$(run_with_timeout 10 openclaw config get gateway.auth.mode 2>/dev/null || echo "unknown")
     if [ "$AUTH_MODE" = "none" ] || [ "$AUTH_MODE" = "off" ]; then
         result_critical "Gateway authentication is DISABLED"
         GW_ISSUES=$((GW_ISSUES + 1))
     fi
 
-    # Check OpenClaw version for CVE-2026-25253
     OC_VERSION=$(run_with_timeout 5 openclaw --version 2>/dev/null || echo "unknown")
     log "  OpenClaw version: $OC_VERSION"
+    if version_lt "$OC_VERSION" "2026.3.21"; then
+        result_critical "OpenClaw version $OC_VERSION is below the current safe baseline (v2026.3.21+) and misses March 2026 security fixes"
+        GW_ISSUES=$((GW_ISSUES + 1))
+    fi
 fi
 
 if [ "$GW_ISSUES" -eq 0 ]; then
@@ -382,14 +528,19 @@ if [ "$GW_ISSUES" -eq 0 ]; then
 fi
 
 # ============================================================
-# CHECK 14: WebSocket Origin Validation (NEW - CVE-2026-25253)
+# CHECK 11: WebSocket Security
+# (Merges old checks 14, 33, 53, 54)
 # ============================================================
-header 14 "Checking WebSocket security (CVE-2026-25253)..."
+header 11 "Checking WebSocket security..."
 
-# Test if gateway WebSocket accepts connections without origin validation
+WS11_ISSUES=0
+
+# Gateway port detection
 GW_PORT=$(run_with_timeout 5 openclaw config get gateway.port 2>/dev/null || echo "18789")
 GW_PORT=$(echo "$GW_PORT" | grep -o '[0-9]*' | head -1)
 GW_PORT=${GW_PORT:-18789}
+
+# WebSocket origin validation (was check 14, CVE-2026-25253)
 WS_RAW=$(curl -s -o /dev/null -w "%{http_code}" \
     -H "Connection: Upgrade" \
     -H "Upgrade: websocket" \
@@ -401,50 +552,81 @@ WS_RAW=$(curl -s -o /dev/null -w "%{http_code}" \
 WS_TEST=$(echo "$WS_RAW" | head -c 3)
 
 if [ "$WS_TEST" = "101" ]; then
-    # HTTP 101 means upgrade accepted - check if version is patched (v2026.1.29+)
-    # Patched versions validate origin at WebSocket protocol level, not HTTP upgrade
     PATCHED_WS=false
-    if [ -n "$OC_VERSION" ] && [ "$OC_VERSION" != "unknown" ]; then
-        # Extract major.minor version (e.g., 2026.2.17 -> 2026.2)
-        OC_MAJOR=$(echo "$OC_VERSION" | cut -d'.' -f1)
-        OC_MINOR=$(echo "$OC_VERSION" | cut -d'.' -f2)
-        OC_PATCH=$(echo "$OC_VERSION" | cut -d'.' -f3 | cut -d'-' -f1)
-        if [ "$OC_MAJOR" -ge 2026 ] 2>/dev/null; then
-            if [ "$OC_MINOR" -ge 2 ] 2>/dev/null; then
-                PATCHED_WS=true
-            elif [ "$OC_MINOR" -eq 1 ] && [ "$OC_PATCH" -ge 29 ] 2>/dev/null; then
-                PATCHED_WS=true
-            fi
+    if [ -n "${OC_VERSION:-}" ] && [ "${OC_VERSION:-}" != "unknown" ]; then
+        if ! version_lt "$OC_VERSION" "2026.1.29"; then
+            PATCHED_WS=true
         fi
     fi
-    # Also check if gateway auth token is configured (mitigates even without origin check)
     HAS_GW_AUTH=$(run_with_timeout 5 openclaw config get gateway.auth.mode 2>/dev/null || echo "")
     if [ "$PATCHED_WS" = true ] && [ -n "$HAS_GW_AUTH" ] && [ "$HAS_GW_AUTH" != "none" ]; then
-        result_clean "WebSocket: v$OC_VERSION patched + gateway auth ($HAS_GW_AUTH) - CVE-2026-25253 mitigated"
+        result_clean "WebSocket: patched + gateway auth ($HAS_GW_AUTH) - CVE-2026-25253 mitigated"
     elif [ "$PATCHED_WS" = true ]; then
-        result_warn "WebSocket: v$OC_VERSION patched but no gateway auth token (recommend setting gateway.auth)"
+        result_warn "WebSocket: patched but no gateway auth token (recommend setting gateway.auth)"
+        WS11_ISSUES=$((WS11_ISSUES + 1))
     else
         result_critical "Gateway accepts WebSocket from arbitrary origins (CVE-2026-25253 may be unpatched)"
+        WS11_ISSUES=$((WS11_ISSUES + 1))
     fi
 elif [ "$WS_TEST" = "000" ]; then
     log "  Gateway not reachable on port $GW_PORT (may be normal)"
-    result_clean "WebSocket test inconclusive (gateway not reachable)"
 elif [ "$WS_TEST" = "403" ] || [ "$WS_TEST" = "401" ]; then
-    result_clean "WebSocket origin validation active (HTTP $WS_TEST - rejected)"
+    log "  WebSocket origin validation active (HTTP $WS_TEST - rejected)"
 else
-    result_clean "WebSocket responded HTTP $WS_TEST"
+    log "  WebSocket responded HTTP $WS_TEST"
+fi
+
+if command -v openclaw &>/dev/null && [ -n "${OC_VERSION:-}" ] && [ "${OC_VERSION:-}" != "unknown" ]; then
+    # ClawJacked WebSocket brute-force (was check 33, fixed v2026.2.26)
+    if version_advisory "2026.2.26" "ClawJacked WebSocket brute-force vulnerability"; then
+        WS11_ISSUES=$((WS11_ISSUES + 1))
+    fi
+
+    # Gateway auth token check
+    GW_AUTH_TOKEN=$(run_with_timeout 5 openclaw config get "gateway.auth.token" 2>/dev/null || echo "")
+    if [ -z "$GW_AUTH_TOKEN" ] || [ "$GW_AUTH_TOKEN" = "null" ]; then
+        result_warn "No gateway auth token set (ClawJacked can brute-force default credentials)"
+        WS11_ISSUES=$((WS11_ISSUES + 1))
+    fi
+
+    # Rate limiting check
+    RATE_LIMIT=$(run_with_timeout 5 openclaw config get "gateway.auth.rateLimit" 2>/dev/null || echo "")
+    if [ "$RATE_LIMIT" = "off" ] || [ "$RATE_LIMIT" = "false" ]; then
+        result_warn "Gateway auth rate limiting is disabled (enables brute-force attacks)"
+        WS11_ISSUES=$((WS11_ISSUES + 1))
+    fi
+
+    # Gateway WebSocket device identity skip (was check 53, CVE-2026-28472, fixed v2026.3.11)
+    if version_advisory "2026.3.11" "gateway WebSocket skips device identity check (CVE-2026-28472)"; then
+        WS11_ISSUES=$((WS11_ISSUES + 1))
+    fi
+
+    # Cross-Site WebSocket Hijacking in trusted-proxy (was check 54, CVE-2026-32302, fixed v2026.3.11)
+    if version_advisory "2026.3.11" "Cross-Site WebSocket Hijacking via Origin bypass (CVE-2026-32302)"; then
+        WS11_ISSUES=$((WS11_ISSUES + 1))
+    fi
+
+    # Extra risk if trusted-proxy mode is active
+    TRUSTED_PROXY_MODE=$(run_with_timeout 5 openclaw config get "gateway.trustedProxy" 2>/dev/null || echo "")
+    if [ "$TRUSTED_PROXY_MODE" = "true" ] && [ "$WS11_ISSUES" -gt 0 ]; then
+        log "  Trusted-proxy mode is ACTIVE — CSWSH exploitation risk elevated"
+    fi
+fi
+
+if [ "$WS11_ISSUES" -eq 0 ]; then
+    result_clean "WebSocket security acceptable"
 fi
 
 # ============================================================
-# CHECK 15: Known Malicious Publisher Detection (NEW)
+# CHECK 12: Known Malicious Publisher Detection
+# (was old check 15)
 # ============================================================
-header 15 "Checking installed skills against known malicious publishers..."
+header 12 "Checking installed skills against known malicious publishers..."
 
 if [ -f "$IOC_DIR/malicious-publishers.txt" ]; then
     PUBLISHERS=$(grep -v '^#' "$IOC_DIR/malicious-publishers.txt" | grep -v '^$' | cut -d'|' -f1)
     PUB_HITS=""
     for pub in $PUBLISHERS; do
-        # Check skill metadata for publisher references
         FOUND=$(grep -rl --exclude-dir="$SELF_DIR_NAME" "$pub" "$SKILLS_DIR" 2>/dev/null || true)
         if [ -n "$FOUND" ]; then
             PUB_HITS="$PUB_HITS\n  Publisher '$pub' referenced in: $FOUND"
@@ -460,110 +642,112 @@ else
 fi
 
 # ============================================================
-# CHECK 16: Sensitive Environment Leakage (NEW)
+# CHECK 13: Credential Leakage & Plaintext Secrets
+# (Merges old checks 16, 29)
 # ============================================================
-header 16 "Scanning for sensitive environment/credential leakage..."
+header 13 "Scanning for credential leakage & plaintext secrets..."
 
+CRED13_ISSUES=0
+
+# Sensitive environment/credential file access (was check 16)
 ENV_PATTERN="\.env|\.bashrc|\.zshrc|\.ssh/|id_rsa|id_ed25519|\.aws/credentials|\.kube/config|\.docker/config|keychain|login\.keychain|Cookies\.binarycookies|\.clawdbot/\.env|\.openclaw/openclaw\.json|auth-profiles\.json|\.git-credentials|\.netrc|moltbook.*token|moltbook.*api|MOLTBOOK_TOKEN|OPENAI_API_KEY|ANTHROPIC_API_KEY|sk-[a-zA-Z0-9]"
-# Only flag skills that READ these files or reference API key patterns (not just mention them in docs)
 ENV_HITS=$(grep -rlinE --exclude-dir="$SELF_DIR_NAME" "cat.*(${ENV_PATTERN})|read.*(${ENV_PATTERN})|open.*(${ENV_PATTERN})|fs\.read.*(${ENV_PATTERN})|source.*(${ENV_PATTERN})" "$SKILLS_DIR" 2>/dev/null || true)
 
-# Also check for hardcoded API keys or Moltbook tokens in skill code (CSA report)
 API_KEY_HITS=$(grep -rlinE --exclude-dir="$SELF_DIR_NAME" "sk-[a-zA-Z0-9]{20,}|OPENAI_API_KEY\s*=\s*['\"][^$]|ANTHROPIC_API_KEY\s*=\s*['\"][^$]|moltbook.*token\s*=\s*['\"]" "$SKILLS_DIR" 2>/dev/null || true)
 if [ -n "$API_KEY_HITS" ]; then
     result_critical "Hardcoded API keys or Moltbook tokens found in:"
     log "$API_KEY_HITS"
+    CRED13_ISSUES=$((CRED13_ISSUES + 1))
 fi
 if [ -n "$ENV_HITS" ]; then
     result_warn "Skills accessing sensitive env/credential files:"
     log "$ENV_HITS"
-else
-    result_clean "No sensitive environment leakage"
+    CRED13_ISSUES=$((CRED13_ISSUES + 1))
+fi
+
+# Plaintext credentials in config files (was check 29)
+CRED_PATTERNS="sk-[a-zA-Z0-9]{20,}|AKIA[0-9A-Z]{16}|ghp_[a-zA-Z0-9]{36}|gho_[a-zA-Z0-9]{36}|xoxb-[0-9]{10,}|xoxp-[0-9]{10,}|glpat-[a-zA-Z0-9_-]{20}"
+for cfile in "$OPENCLAW_DIR/openclaw.json" \
+             "$OPENCLAW_DIR/agents/main/agent/auth-profiles.json"; do
+    if [ -f "$cfile" ]; then
+        CRED_FOUND=$(grep -oE "$CRED_PATTERNS" "$cfile" 2>/dev/null | head -5 || true)
+        if [ -n "$CRED_FOUND" ]; then
+            result_warn "Plaintext credentials found in $(basename "$cfile") (consider using a secrets manager)"
+            CRED13_ISSUES=$((CRED13_ISSUES + 1))
+        fi
+    fi
+done
+if [ -d "$OPENCLAW_DIR/credentials" ]; then
+    CRED_FILES=$(find "$OPENCLAW_DIR/credentials" -name "*.json" -exec grep -lE "$CRED_PATTERNS" {} \; 2>/dev/null || true)
+    if [ -n "$CRED_FILES" ]; then
+        result_warn "Plaintext API keys in credentials directory"
+        CRED13_ISSUES=$((CRED13_ISSUES + 1))
+    fi
+fi
+
+if [ "$CRED13_ISSUES" -eq 0 ]; then
+    result_clean "No credential leakage or plaintext secrets detected"
 fi
 
 # ============================================================
-# CHECK 17: DM Policy Audit (NEW - OpenClaw Security Docs)
+# CHECK 14: DM, Tool & Sandbox Policies
+# (Merges old checks 17, 18, 19)
 # ============================================================
-header 17 "Auditing DM access policies..."
+header 14 "Auditing DM, tool, and sandbox policies..."
 
-DM_ISSUES=0
+POL14_ISSUES=0
 if command -v openclaw &>/dev/null; then
+    # DM policy audit (was check 17)
     for channel in whatsapp telegram discord slack signal; do
         DM_POLICY=$(run_with_timeout 10 openclaw config get "channels.${channel}.dmPolicy" 2>/dev/null || echo "")
         if [ "$DM_POLICY" = "open" ]; then
             result_warn "Channel '$channel' has dmPolicy='open' (anyone can message)"
-            DM_ISSUES=$((DM_ISSUES + 1))
+            POL14_ISSUES=$((POL14_ISSUES + 1))
         fi
-        # Check for wildcard in allowFrom
         ALLOW_FROM=$(run_with_timeout 10 openclaw config get "channels.${channel}.allowFrom" 2>/dev/null || echo "")
         if echo "$ALLOW_FROM" | grep -q '"*"' 2>/dev/null; then
             result_warn "Channel '$channel' has wildcard '*' in allowFrom"
-            DM_ISSUES=$((DM_ISSUES + 1))
+            POL14_ISSUES=$((POL14_ISSUES + 1))
         fi
     done
-fi
-if [ "$DM_ISSUES" -eq 0 ]; then
-    result_clean "DM policies acceptable"
-fi
 
-# ============================================================
-# CHECK 18: Tool Policy / Elevated Tools Audit (NEW - DefectDojo)
-# ============================================================
-header 18 "Auditing tool policies and elevated access..."
-
-TOOL_ISSUES=0
-if command -v openclaw &>/dev/null; then
-    # Check if elevated tools are broadly enabled
+    # Tool policy / elevated tools audit (was check 18)
     ELEVATED=$(run_with_timeout 10 openclaw config get "tools.elevated.enabled" 2>/dev/null || echo "")
     if [ "$ELEVATED" = "true" ]; then
         ELEVATED_ALLOW=$(run_with_timeout 10 openclaw config get "tools.elevated.allowFrom" 2>/dev/null || echo "")
         if echo "$ELEVATED_ALLOW" | grep -q '"*"' 2>/dev/null; then
             result_critical "Elevated tools enabled with wildcard allowFrom"
-            TOOL_ISSUES=$((TOOL_ISSUES + 1))
+            POL14_ISSUES=$((POL14_ISSUES + 1))
         else
             log "  INFO: Elevated tools enabled (restricted allowFrom)"
         fi
     fi
 
-    # Check if exec tool is in deny list
     DENY_LIST=$(run_with_timeout 10 openclaw config get "tools.deny" 2>/dev/null || echo "")
     if [ -z "$DENY_LIST" ] || [ "$DENY_LIST" = "[]" ] || [ "$DENY_LIST" = "null" ]; then
         result_warn "No tools in deny list (consider blocking: exec, process, browser)"
-        TOOL_ISSUES=$((TOOL_ISSUES + 1))
+        POL14_ISSUES=$((POL14_ISSUES + 1))
     fi
-fi
-if [ "$TOOL_ISSUES" -eq 0 ]; then
-    result_clean "Tool policies acceptable"
-fi
 
-# ============================================================
-# CHECK 19: Sandbox Configuration (NEW - Penligent/Composio)
-# ============================================================
-header 19 "Checking sandbox configuration..."
-
-SANDBOX_ISSUES=0
-if command -v openclaw &>/dev/null; then
+    # Sandbox configuration (was check 19)
     SANDBOX_MODE=$(run_with_timeout 10 openclaw config get "sandbox.mode" 2>/dev/null || echo "")
     if [ "$SANDBOX_MODE" = "off" ] || [ "$SANDBOX_MODE" = "none" ]; then
         result_warn "Sandbox mode is disabled (consider: mode='all')"
-        SANDBOX_ISSUES=$((SANDBOX_ISSUES + 1))
+        POL14_ISSUES=$((POL14_ISSUES + 1))
     elif [ -n "$SANDBOX_MODE" ]; then
         log "  Sandbox mode: $SANDBOX_MODE"
     fi
-
-    WORKSPACE_ACCESS=$(run_with_timeout 10 openclaw config get "sandbox.workspaceAccess" 2>/dev/null || echo "")
-    if [ "$WORKSPACE_ACCESS" = "rw" ]; then
-        log "  INFO: Sandbox workspace access is read-write"
-    fi
 fi
-if [ "$SANDBOX_ISSUES" -eq 0 ]; then
-    result_clean "Sandbox configuration acceptable"
+
+if [ "$POL14_ISSUES" -eq 0 ]; then
+    result_clean "DM, tool, and sandbox policies acceptable"
 fi
 
 # ============================================================
-# CHECK 20: mDNS/Bonjour Exposure (NEW - OpenClaw Docs)
+# CHECK 15: mDNS/Bonjour Exposure
+# (was old check 20)
 # ============================================================
-header 20 "Checking mDNS/Bonjour discovery settings..."
+header 15 "Checking mDNS/Bonjour discovery settings..."
 
 MDNS_ISSUES=0
 if command -v openclaw &>/dev/null; then
@@ -580,67 +764,17 @@ if [ "$MDNS_ISSUES" -eq 0 ]; then
 fi
 
 # ============================================================
-# CHECK 21: Session & Credential Permissions (NEW - Vectra/DefectDojo)
+# CHECK 16: Persistence Mechanism Scan
+# (was old check 22)
 # ============================================================
-header 21 "Auditing session and credential file permissions..."
-
-CRED_ISSUES=0
-# Check credentials directory
-CRED_DIR="$OPENCLAW_DIR/credentials"
-if [ -d "$CRED_DIR" ]; then
-    DIR_PERMS=$(stat -f "%Lp" "$CRED_DIR" 2>/dev/null || stat -c "%a" "$CRED_DIR" 2>/dev/null)
-    if [ "$DIR_PERMS" != "700" ]; then
-        result_warn "Credentials dir has permissions $DIR_PERMS (should be 700)"
-        CRED_ISSUES=$((CRED_ISSUES + 1))
-    fi
-    # Check individual credential files
-    while IFS= read -r cred_file; do
-        FPERMS=$(stat -f "%Lp" "$cred_file" 2>/dev/null || stat -c "%a" "$cred_file" 2>/dev/null)
-        if [ "$FPERMS" != "600" ]; then
-            result_warn "$(basename "$cred_file") has permissions $FPERMS (should be 600)"
-            CRED_ISSUES=$((CRED_ISSUES + 1))
-        fi
-    done < <(find "$CRED_DIR" -type f -name "*.json" 2>/dev/null)
-fi
-
-# Check session files
-for agent_dir in "$OPENCLAW_DIR"/agents/*/; do
-    SESSION_DIR="$agent_dir/sessions"
-    if [ -d "$SESSION_DIR" ]; then
-        SDIR_PERMS=$(stat -f "%Lp" "$SESSION_DIR" 2>/dev/null || stat -c "%a" "$SESSION_DIR" 2>/dev/null)
-        if [ -n "$SDIR_PERMS" ] && [ "$SDIR_PERMS" != "700" ]; then
-            result_warn "Session dir $(basename "$agent_dir")/sessions has permissions $SDIR_PERMS (should be 700)"
-            CRED_ISSUES=$((CRED_ISSUES + 1))
-        fi
-    fi
-done
-
-# Check openclaw home directory itself
-if [ -d "$OPENCLAW_DIR" ]; then
-    HOME_PERMS=$(stat -f "%Lp" "$OPENCLAW_DIR" 2>/dev/null || stat -c "%a" "$OPENCLAW_DIR" 2>/dev/null)
-    if [ "$HOME_PERMS" != "700" ]; then
-        result_warn "OpenClaw home dir has permissions $HOME_PERMS (should be 700)"
-        CRED_ISSUES=$((CRED_ISSUES + 1))
-    fi
-fi
-
-if [ "$CRED_ISSUES" -eq 0 ]; then
-    result_clean "Session and credential permissions correct"
-fi
-
-# ============================================================
-# CHECK 22: Persistence Mechanism Scan (NEW - Vectra)
-# ============================================================
-header 22 "Scanning for unauthorized persistence mechanisms..."
+header 16 "Scanning for unauthorized persistence mechanisms..."
 
 PERSIST_ISSUES=0
-# Check LaunchAgents for suspicious openclaw-related items
 if [ -d "$HOME/Library/LaunchAgents" ]; then
     SUSPICIOUS_AGENTS=$(find "$HOME/Library/LaunchAgents" -name "*.plist" -exec grep -li "openclaw\|clawdbot\|moltbot" {} \; 2>/dev/null || true)
     if [ -n "$SUSPICIOUS_AGENTS" ]; then
         log "  LaunchAgents referencing openclaw:"
         log "  $SUSPICIOUS_AGENTS"
-        # Check if any are NOT the known security-dashboard
         for agent in $SUSPICIOUS_AGENTS; do
             if ! grep -q "com.openclaw.security-dashboard" "$agent" 2>/dev/null; then
                 AGENT_LABEL=$(grep -A1 "<key>Label</key>" "$agent" 2>/dev/null | tail -1 | sed 's/.*<string>\(.*\)<\/string>.*/\1/')
@@ -651,7 +785,6 @@ if [ -d "$HOME/Library/LaunchAgents" ]; then
     fi
 fi
 
-# Check crontab for suspicious entries
 CRON_ENTRIES=$(crontab -l 2>/dev/null | grep -ivE "${SELF_DIR_NAME}|#" | grep -iE "openclaw|clawdbot|moltbot|curl.*\|.*sh|wget.*\|.*bash" || true)
 if [ -n "$CRON_ENTRIES" ]; then
     result_warn "Suspicious cron entries found:"
@@ -659,7 +792,6 @@ if [ -n "$CRON_ENTRIES" ]; then
     PERSIST_ISSUES=$((PERSIST_ISSUES + 1))
 fi
 
-# Check for unexpected systemd services (Linux)
 if command -v systemctl &>/dev/null; then
     SYS_SERVICES=$(systemctl --user list-units --type=service --all 2>/dev/null | grep -iE "openclaw|clawdbot|moltbot" | grep -v "$SELF_DIR_NAME" || true)
     if [ -n "$SYS_SERVICES" ]; then
@@ -673,9 +805,77 @@ if [ "$PERSIST_ISSUES" -eq 0 ]; then
 fi
 
 # ============================================================
-# CHECK 23: Plugin/Extension Security (NEW - Cisco/DefectDojo)
+# CHECK 17: Log Security & Poisoning
+# (Merges old checks 24, 40)
 # ============================================================
-header 23 "Auditing installed plugins and extensions..."
+header 17 "Checking log security and poisoning indicators..."
+
+LOG17_ISSUES=0
+
+# Log redaction settings (was check 24)
+if command -v openclaw &>/dev/null; then
+    REDACT=$(run_with_timeout 10 openclaw config get "logging.redactSensitive" 2>/dev/null || echo "")
+    if [ "$REDACT" = "off" ] || [ "$REDACT" = "false" ] || [ "$REDACT" = "none" ]; then
+        result_warn "Log redaction is disabled (sensitive data may leak to logs)"
+        LOG17_ISSUES=$((LOG17_ISSUES + 1))
+    elif [ -n "$REDACT" ]; then
+        log "  Log redaction: $REDACT"
+    fi
+
+    GW_LOG="/tmp/openclaw"
+    if [ -d "$GW_LOG" ]; then
+        GW_LOG_PERMS=$(stat -f "%Lp" "$GW_LOG" 2>/dev/null || stat -c "%a" "$GW_LOG" 2>/dev/null)
+        if [ "$GW_LOG_PERMS" != "700" ] && [ "$GW_LOG_PERMS" != "750" ]; then
+            result_warn "Gateway log dir /tmp/openclaw has permissions $GW_LOG_PERMS (should be 700)"
+            LOG17_ISSUES=$((LOG17_ISSUES + 1))
+        fi
+    fi
+
+    # WebSocket header redaction (was check 40)
+    LOG_REDACT=$(run_with_timeout 5 openclaw config get "logging.redactHeaders" 2>/dev/null || echo "")
+    if [ -z "$LOG_REDACT" ] || [ "$LOG_REDACT" = "false" ] || [ "$LOG_REDACT" = "null" ]; then
+        result_warn "WebSocket header redaction not enabled (logging.redactHeaders)"
+        LOG17_ISSUES=$((LOG17_ISSUES + 1))
+    fi
+fi
+
+# Log poisoning indicators (was check 40)
+if [ -d "$LOG_DIR" ]; then
+    ANSI_HITS=$(grep -rlP '\x1b\[' "$LOG_DIR" 2>/dev/null | head -5)
+    if [ -n "$ANSI_HITS" ]; then
+        ANSI_COUNT=$(echo "$ANSI_HITS" | wc -l | tr -d ' ')
+        result_warn "ANSI escape sequences found in $ANSI_COUNT log file(s) — possible log poisoning"
+        LOG17_ISSUES=$((LOG17_ISSUES + 1))
+    fi
+
+    FAKE_ENTRIES=$(grep -rlE '\]\s*(INFO|WARN|ERROR|CRITICAL)\s*:.*\[20[0-9]{2}-' "$LOG_DIR" 2>/dev/null | head -3)
+    if [ -n "$FAKE_ENTRIES" ]; then
+        while IFS= read -r FFILE; do
+            NESTED=$(grep -cE '^\[.*\]\s*(INFO|ERROR).*\[20[0-9]{2}-[0-9]{2}' "$FFILE" 2>/dev/null || echo "0")
+            if [ "$NESTED" -gt 0 ]; then
+                result_warn "Possible injected log entries in $(basename "$FFILE") — log poisoning indicator"
+                LOG17_ISSUES=$((LOG17_ISSUES + 1))
+                break
+            fi
+        done <<< "$FAKE_ENTRIES"
+    fi
+
+    CTRL_HITS=$(grep -rlP '[\x00-\x08\x0e-\x1f]' "$LOG_DIR" 2>/dev/null | grep -v '.log.gz' | head -3)
+    if [ -n "$CTRL_HITS" ]; then
+        result_warn "Control characters found in logs — possible WebSocket header injection"
+        LOG17_ISSUES=$((LOG17_ISSUES + 1))
+    fi
+fi
+
+if [ "$LOG17_ISSUES" -eq 0 ]; then
+    result_clean "Log security and poisoning checks passed"
+fi
+
+# ============================================================
+# CHECK 18: Plugin/Extension Security
+# (was old check 23)
+# ============================================================
+header 18 "Auditing installed plugins and extensions..."
 
 EXT_DIR="$OPENCLAW_DIR/extensions"
 EXT_ISSUES=0
@@ -685,13 +885,11 @@ if [ -d "$EXT_DIR" ]; then
     if [ "$EXT_COUNT" -gt 0 ]; then
         while IFS= read -r ext; do
             EXT_NAME=$(basename "$ext")
-            # Check for suspicious patterns in extension code
             EXT_SUS=$(grep -rlE "eval\(|exec\(|child_process|\.exec\(|net\.connect|http\.request|fetch\(" "$ext" 2>/dev/null | head -3 || true)
             if [ -n "$EXT_SUS" ]; then
                 result_warn "Extension '$EXT_NAME' has code execution patterns"
                 EXT_ISSUES=$((EXT_ISSUES + 1))
             fi
-            # Check for known malicious patterns
             EXT_MAL=$(grep -rlE "$DOMAIN_PATTERN" "$ext" 2>/dev/null || true)
             if [ -n "$EXT_MAL" ]; then
                 result_critical "Extension '$EXT_NAME' references known malicious domains"
@@ -705,113 +903,27 @@ if [ "$EXT_ISSUES" -eq 0 ]; then
 fi
 
 # ============================================================
-# CHECK 24: Log Redaction Audit (NEW - OpenClaw Docs)
+# CHECK 19: Docker Container Security
+# (was old check 27)
 # ============================================================
-header 24 "Checking log redaction settings..."
-
-LOG_ISSUES=0
-if command -v openclaw &>/dev/null; then
-    REDACT=$(run_with_timeout 10 openclaw config get "logging.redactSensitive" 2>/dev/null || echo "")
-    if [ "$REDACT" = "off" ] || [ "$REDACT" = "false" ] || [ "$REDACT" = "none" ]; then
-        result_warn "Log redaction is disabled (sensitive data may leak to logs)"
-        LOG_ISSUES=$((LOG_ISSUES + 1))
-    elif [ -n "$REDACT" ]; then
-        log "  Log redaction: $REDACT"
-    fi
-
-    # Check if gateway logs are world-readable
-    GW_LOG="/tmp/openclaw"
-    if [ -d "$GW_LOG" ]; then
-        GW_LOG_PERMS=$(stat -f "%Lp" "$GW_LOG" 2>/dev/null || stat -c "%a" "$GW_LOG" 2>/dev/null)
-        if [ "$GW_LOG_PERMS" != "700" ] && [ "$GW_LOG_PERMS" != "750" ]; then
-            result_warn "Gateway log dir /tmp/openclaw has permissions $GW_LOG_PERMS (should be 700)"
-            LOG_ISSUES=$((LOG_ISSUES + 1))
-        fi
-    fi
-fi
-if [ "$LOG_ISSUES" -eq 0 ]; then
-    result_clean "Log redaction settings acceptable"
-fi
-
-# ============================================================
-# CHECK 25: Reverse Proxy / Localhost Trust Bypass (NEW - Penligent/Vectra)
-# ============================================================
-header 25 "Checking for reverse proxy localhost trust bypass..."
-
-PROXY_ISSUES=0
-if command -v openclaw &>/dev/null; then
-    # Check if bound to LAN with no trusted proxy configuration
-    BIND_ADDR=$(run_with_timeout 10 openclaw config get "gateway.bind" 2>/dev/null || echo "")
-    TRUSTED_PROXIES=$(run_with_timeout 10 openclaw config get "gateway.trustedProxies" 2>/dev/null || echo "")
-    DISABLE_DEVICE_AUTH=$(run_with_timeout 10 openclaw config get "gateway.dangerouslyDisableDeviceAuth" 2>/dev/null || echo "")
-
-    if [ "$DISABLE_DEVICE_AUTH" = "true" ]; then
-        result_critical "Device authentication is disabled (dangerouslyDisableDeviceAuth=true)"
-        PROXY_ISSUES=$((PROXY_ISSUES + 1))
-    fi
-
-    if [ "$BIND_ADDR" = "lan" ] || [ "$BIND_ADDR" = "0.0.0.0" ]; then
-        if [ -z "$TRUSTED_PROXIES" ] || [ "$TRUSTED_PROXIES" = "null" ] || [ "$TRUSTED_PROXIES" = "[]" ]; then
-            result_warn "Gateway on LAN without trustedProxies - localhost trust bypass risk"
-            PROXY_ISSUES=$((PROXY_ISSUES + 1))
-        fi
-    fi
-fi
-if [ "$PROXY_ISSUES" -eq 0 ]; then
-    result_clean "No reverse proxy bypass risk"
-fi
-
-# ============================================================
-# CHECK 26: Exec-Approvals Configuration (NEW - CVE-2026-25253)
-# ============================================================
-header 26 "Auditing exec-approvals configuration..."
-
-EXEC_ISSUES=0
-EXEC_FILE="$OPENCLAW_DIR/exec-approvals.json"
-if [ -f "$EXEC_FILE" ]; then
-    # Check for overly permissive exec approvals
-    UNSAFE_EXEC=$(grep -iE '"security"\s*:\s*"allow"|"ask"\s*:\s*"off"|"allowlist"\s*:\s*\[\s*\]' "$EXEC_FILE" 2>/dev/null || true)
-    if [ -n "$UNSAFE_EXEC" ]; then
-        result_critical "Exec-approvals has unsafe configuration (allows remote exec):"
-        log "  $UNSAFE_EXEC"
-        EXEC_ISSUES=$((EXEC_ISSUES + 1))
-    fi
-    # Check file permissions
-    EXEC_PERMS=$(stat -f "%Lp" "$EXEC_FILE" 2>/dev/null || stat -c "%a" "$EXEC_FILE" 2>/dev/null)
-    if [ "$EXEC_PERMS" != "600" ]; then
-        result_warn "exec-approvals.json has permissions $EXEC_PERMS (should be 600)"
-        EXEC_ISSUES=$((EXEC_ISSUES + 1))
-    fi
-fi
-if [ "$EXEC_ISSUES" -eq 0 ]; then
-    result_clean "Exec-approvals configuration acceptable"
-fi
-
-# ============================================================
-# CHECK 27: Docker Container Security (NEW - ToxSec/DefectDojo)
-# ============================================================
-header 27 "Auditing Docker container security..."
+header 19 "Auditing Docker container security..."
 
 DOCKER_ISSUES=0
 if command -v docker &>/dev/null; then
-    # Check for running openclaw containers
     OC_CONTAINERS=$(docker ps --format '{{.Names}} {{.Image}}' 2>/dev/null | grep -iE "openclaw|clawdbot|moltbot" || true)
     if [ -n "$OC_CONTAINERS" ]; then
         while IFS= read -r container_line; do
             CNAME=$(echo "$container_line" | awk '{print $1}')
-            # Check if running as root
             CUSER=$(docker inspect --format '{{.Config.User}}' "$CNAME" 2>/dev/null || echo "")
             if [ -z "$CUSER" ] || [ "$CUSER" = "root" ] || [ "$CUSER" = "0" ]; then
                 result_warn "Container '$CNAME' running as root (use non-root user)"
                 DOCKER_ISSUES=$((DOCKER_ISSUES + 1))
             fi
-            # Check for Docker socket mount
             DSOCK=$(docker inspect --format '{{range .Mounts}}{{.Source}} {{end}}' "$CNAME" 2>/dev/null | grep "docker.sock" || true)
             if [ -n "$DSOCK" ]; then
                 result_critical "Container '$CNAME' has Docker socket mounted (container escape risk)"
                 DOCKER_ISSUES=$((DOCKER_ISSUES + 1))
             fi
-            # Check for privileged mode
             PRIV=$(docker inspect --format '{{.HostConfig.Privileged}}' "$CNAME" 2>/dev/null || echo "")
             if [ "$PRIV" = "true" ]; then
                 result_critical "Container '$CNAME' is running in privileged mode"
@@ -827,19 +939,148 @@ if [ "$DOCKER_ISSUES" -eq 0 ]; then
 fi
 
 # ============================================================
-# CHECK 28: Node.js Version / CVE-2026-21636 (NEW - Argus)
+# CHECK 20: Authentication & Route Security
+# (Merges old checks 25, 41, 45, 49)
 # ============================================================
-header 28 "Checking Node.js version for known CVEs..."
+header 20 "Checking authentication and route security..."
+
+AUTH20_ISSUES=0
+if command -v openclaw &>/dev/null; then
+    # Reverse proxy localhost trust bypass (was check 25)
+    BIND_ADDR=$(run_with_timeout 10 openclaw config get "gateway.bind" 2>/dev/null || echo "")
+    TRUSTED_PROXIES=$(run_with_timeout 10 openclaw config get "gateway.trustedProxies" 2>/dev/null || echo "")
+    DISABLE_DEVICE_AUTH=$(run_with_timeout 10 openclaw config get "gateway.dangerouslyDisableDeviceAuth" 2>/dev/null || echo "")
+
+    if [ "$DISABLE_DEVICE_AUTH" = "true" ]; then
+        result_critical "Device authentication is disabled (dangerouslyDisableDeviceAuth=true)"
+        AUTH20_ISSUES=$((AUTH20_ISSUES + 1))
+    fi
+
+    if [ "$BIND_ADDR" = "lan" ] || [ "$BIND_ADDR" = "0.0.0.0" ]; then
+        if [ -z "$TRUSTED_PROXIES" ] || [ "$TRUSTED_PROXIES" = "null" ] || [ "$TRUSTED_PROXIES" = "[]" ]; then
+            result_warn "Gateway on LAN without trustedProxies - localhost trust bypass risk"
+            AUTH20_ISSUES=$((AUTH20_ISSUES + 1))
+        fi
+    fi
+
+    if [ -n "${OC_VERSION:-}" ] && [ "${OC_VERSION:-}" != "unknown" ]; then
+        # Browser Relay CDP unauthenticated access (was check 41, CVE-2026-28458, fixed v2026.2.1)
+        if command -v lsof &>/dev/null; then
+            CDP_LISTEN=$(lsof -iTCP:18792 -sTCP:LISTEN -nP 2>/dev/null | grep -v COMMAND)
+            if [ -n "$CDP_LISTEN" ]; then
+                log "  Browser Relay is listening on port 18792"
+                if version_advisory "2026.2.1" "Browser Relay /cdp endpoint unauthenticated (CVE-2026-28458, CVSS 7.5)"; then
+                    AUTH20_ISSUES=$((AUTH20_ISSUES + 1))
+                fi
+            fi
+        fi
+
+        # Sandbox browser bridge auth bypass (was check 45, CVE-2026-28468, fixed v2026.2.14)
+        if version_advisory "2026.2.14" "sandbox browser bridge unauthenticated (CVE-2026-28468)" "warn"; then
+            AUTH20_ISSUES=$((AUTH20_ISSUES + 1))
+        fi
+
+        # /agent/act no authentication (was check 49, CVE-2026-28485, fixed v2026.2.12)
+        if version_advisory "2026.2.12" "/agent/act HTTP route unauthenticated (CVE-2026-28485)"; then
+            AUTH20_ISSUES=$((AUTH20_ISSUES + 1))
+        fi
+
+        # Check if browser extension is enabled (required for the endpoints above)
+        BROWSER_EXT=$(run_with_timeout 5 openclaw config get "browser.extension.enabled" 2>/dev/null || echo "")
+        if [ "$BROWSER_EXT" = "true" ] && [ "$AUTH20_ISSUES" -gt 0 ]; then
+            log "  Browser extension is enabled — auth bypass attack surface is active"
+        fi
+    fi
+fi
+
+if [ "$AUTH20_ISSUES" -eq 0 ]; then
+    result_clean "Authentication and route security acceptable"
+fi
+
+# ============================================================
+# CHECK 21: Exec Guardrails & Approval Security
+# (Merges old checks 26, 35, 43, 44, 62)
+# ============================================================
+header 21 "Checking exec guardrails and approval security..."
+
+EXEC21_ISSUES=0
+
+# Exec-approvals configuration (was check 26)
+EXEC_FILE="$OPENCLAW_DIR/exec-approvals.json"
+if [ -f "$EXEC_FILE" ]; then
+    UNSAFE_EXEC=$(grep -iE '"security"\s*:\s*"allow"|"ask"\s*:\s*"off"|"allowlist"\s*:\s*\[\s*\]' "$EXEC_FILE" 2>/dev/null || true)
+    if [ -n "$UNSAFE_EXEC" ]; then
+        result_critical "Exec-approvals has unsafe configuration (allows remote exec):"
+        log "  $UNSAFE_EXEC"
+        EXEC21_ISSUES=$((EXEC21_ISSUES + 1))
+    fi
+    EXEC_PERMS=$(stat -f "%Lp" "$EXEC_FILE" 2>/dev/null || stat -c "%a" "$EXEC_FILE" 2>/dev/null)
+    if [ "$EXEC_PERMS" != "600" ]; then
+        result_warn "exec-approvals.json has permissions $EXEC_PERMS (should be 600)"
+        EXEC21_ISSUES=$((EXEC21_ISSUES + 1))
+    fi
+fi
+
+if command -v openclaw &>/dev/null && [ -n "${OC_VERSION:-}" ] && [ "${OC_VERSION:-}" != "unknown" ]; then
+    # safeBins bypass (was check 35, CVE-2026-28363, CVSS 9.9, fixed v2026.2.23)
+    if version_advisory "2026.2.23" "CVE-2026-28363 (CVSS 9.9) safeBins bypass via sort --compress-prog"; then
+        EXEC21_ISSUES=$((EXEC21_ISSUES + 1))
+    fi
+
+    # Audit safeBins list
+    SAFE_BINS=$(run_with_timeout 5 openclaw config get "tools.exec.safeBins" 2>/dev/null || echo "")
+    if echo "$SAFE_BINS" | grep -q '"sort"' 2>/dev/null; then
+        log "  INFO: 'sort' is in safeBins list (ensure v2026.2.23+ for CVE-2026-28363 fix)"
+    fi
+
+    # Shell expansion bypass (was check 43, CVE-2026-28463, fixed v2026.2.14)
+    if version_advisory "2026.2.14" "exec-approvals shell expansion bypass (CVE-2026-28463)"; then
+        EXEC21_ISSUES=$((EXEC21_ISSUES + 1))
+    fi
+
+    for RBIN in head tail grep cat; do
+        if echo "$SAFE_BINS" | grep -q "\"$RBIN\"" 2>/dev/null; then
+            log "  INFO: '$RBIN' in safeBins — ensure v2026.2.14+ for CVE-2026-28463 fix"
+        fi
+    done
+
+    # Approval field injection (was check 44, CVE-2026-28466, fixed v2026.2.14)
+    if version_advisory "2026.2.14" "approval field injection bypass (CVE-2026-28466)"; then
+        EXEC21_ISSUES=$((EXEC21_ISSUES + 1))
+    fi
+
+    # Exec approval integrity replay (was check 62)
+    EXEC_SECURITY=$(run_with_timeout 10 openclaw config get "tools.exec.security" 2>/dev/null || echo "")
+    APPROVALS=$(run_with_timeout 10 openclaw config get "tools.exec.approvals" 2>/dev/null || echo "")
+
+    if version_lt "${OC_VERSION:-unknown}" "2026.3.13"; then
+        if [ "$EXEC_SECURITY" = "allowlist" ] || { [ -n "$SAFE_BINS" ] && [ "$SAFE_BINS" != "[]" ] && [ "$SAFE_BINS" != "null" ]; }; then
+            result_warn "Exec guardrails rely on pre-v2026.3.13 approval integrity (GHSA-qc36, GHSA-xf99, GHSA-rw39, GHSA-f8r2)"
+            EXEC21_ISSUES=$((EXEC21_ISSUES + 1))
+        fi
+        if [ -n "$APPROVALS" ] && [ "$APPROVALS" != "[]" ] && [ "$APPROVALS" != "null" ]; then
+            log "  Existing exec approval config present: review previously approved script-runner commands after upgrading"
+        fi
+    fi
+fi
+
+if [ "$EXEC21_ISSUES" -eq 0 ]; then
+    result_clean "Exec guardrails and approval security acceptable"
+fi
+
+# ============================================================
+# CHECK 22: Node.js Version / CVE-2026-21636
+# (was old check 28)
+# ============================================================
+header 22 "Checking Node.js version for known CVEs..."
 
 NODE_ISSUES=0
 if command -v node &>/dev/null; then
     NODE_VER=$(node --version 2>/dev/null | sed 's/v//')
     NODE_MAJOR=$(echo "$NODE_VER" | cut -d. -f1)
     NODE_MINOR=$(echo "$NODE_VER" | cut -d. -f2)
-    NODE_PATCH=$(echo "$NODE_VER" | cut -d. -f3)
     log "  Node.js version: v$NODE_VER"
 
-    # CVE-2026-21636: Permission model bypass (fixed in 22.12.0)
     if [ "$NODE_MAJOR" -eq 22 ] && [ "$NODE_MINOR" -lt 12 ]; then
         result_warn "Node.js v$NODE_VER is vulnerable to CVE-2026-21636 (permission model bypass). Upgrade to 22.12.0+"
         NODE_ISSUES=$((NODE_ISSUES + 1))
@@ -855,39 +1096,10 @@ if [ "$NODE_ISSUES" -eq 0 ]; then
 fi
 
 # ============================================================
-# CHECK 29: Plaintext Credential Detection (NEW - Argus/Vectra)
+# CHECK 23: VS Code Extension Trojan Detection
+# (was old check 30)
 # ============================================================
-header 29 "Scanning for plaintext credentials in config files..."
-
-PLAINTEXT_ISSUES=0
-# Scan openclaw config and credential files for API key patterns
-CRED_PATTERNS="sk-[a-zA-Z0-9]{20,}|AKIA[0-9A-Z]{16}|ghp_[a-zA-Z0-9]{36}|gho_[a-zA-Z0-9]{36}|xoxb-[0-9]{10,}|xoxp-[0-9]{10,}|glpat-[a-zA-Z0-9_-]{20}"
-for cfile in "$OPENCLAW_DIR/openclaw.json" \
-             "$OPENCLAW_DIR/agents/main/agent/auth-profiles.json"; do
-    if [ -f "$cfile" ]; then
-        CRED_FOUND=$(grep -oE "$CRED_PATTERNS" "$cfile" 2>/dev/null | head -5 || true)
-        if [ -n "$CRED_FOUND" ]; then
-            result_warn "Plaintext credentials found in $(basename "$cfile") (consider using a secrets manager)"
-            PLAINTEXT_ISSUES=$((PLAINTEXT_ISSUES + 1))
-        fi
-    fi
-done
-# Check credential JSON files
-if [ -d "$OPENCLAW_DIR/credentials" ]; then
-    CRED_FILES=$(find "$OPENCLAW_DIR/credentials" -name "*.json" -exec grep -lE "$CRED_PATTERNS" {} \; 2>/dev/null || true)
-    if [ -n "$CRED_FILES" ]; then
-        result_warn "Plaintext API keys in credentials directory"
-        PLAINTEXT_ISSUES=$((PLAINTEXT_ISSUES + 1))
-    fi
-fi
-if [ "$PLAINTEXT_ISSUES" -eq 0 ]; then
-    result_clean "No exposed plaintext credentials"
-fi
-
-# ============================================================
-# CHECK 30: VS Code Extension Trojan Detection (NEW - Aikido/JFrog)
-# ============================================================
-header 30 "Checking for fake ClawdBot/OpenClaw VS Code extensions..."
+header 23 "Checking for fake ClawdBot/OpenClaw VS Code extensions..."
 
 VSCODE_ISSUES=0
 VSCODE_EXT_DIR="$HOME/.vscode/extensions"
@@ -899,7 +1111,6 @@ if [ -d "$VSCODE_EXT_DIR" ]; then
         VSCODE_ISSUES=$((VSCODE_ISSUES + 1))
     fi
 fi
-# Also check VS Code Insiders
 VSCODE_INS_DIR="$HOME/.vscode-insiders/extensions"
 if [ -d "$VSCODE_INS_DIR" ]; then
     FAKE_INS=$(find "$VSCODE_INS_DIR" -maxdepth 1 -type d -iname "*clawdbot*" -o -iname "*moltbot*" -o -iname "*openclaw*" 2>/dev/null || true)
@@ -914,12 +1125,12 @@ if [ "$VSCODE_ISSUES" -eq 0 ]; then
 fi
 
 # ============================================================
-# CHECK 31: Internet Exposure Detection (NEW - Brandefense/Shodan)
+# CHECK 24: Internet Exposure Detection
+# (was old check 31)
 # ============================================================
-header 31 "Checking for internet exposure of gateway..."
+header 24 "Checking for internet exposure of gateway..."
 
 EXPOSURE_ISSUES=0
-# Check if gateway is listening on non-loopback
 GW_LISTEN=$(lsof -i ":${GW_PORT}" -nP 2>/dev/null | grep LISTEN | awk '{print $9}' | head -5 || true)
 if [ -n "$GW_LISTEN" ]; then
     NON_LOCAL=$(echo "$GW_LISTEN" | grep -vE "127\.0\.0\.1|localhost|\[::1\]|\*:" || true)
@@ -928,7 +1139,6 @@ if [ -n "$GW_LISTEN" ]; then
         log "  $GW_LISTEN"
         EXPOSURE_ISSUES=$((EXPOSURE_ISSUES + 1))
     fi
-    # Check for wildcard binding
     WILDCARD=$(echo "$GW_LISTEN" | grep "\*:" || true)
     if [ -n "$WILDCARD" ]; then
         result_warn "Gateway bound to all interfaces (*:$GW_PORT) - potentially internet-exposed"
@@ -940,20 +1150,19 @@ if [ "$EXPOSURE_ISSUES" -eq 0 ]; then
 fi
 
 # ============================================================
-# CHECK 32: MCP Server Security (NEW - ToxSec/Prompt Security)
+# CHECK 25: MCP Server Security
+# (was old check 32)
 # ============================================================
-header 32 "Auditing MCP server configuration..."
+header 25 "Auditing MCP server configuration..."
 
 MCP_ISSUES=0
 if command -v openclaw &>/dev/null; then
-    # Check if all project MCP servers are enabled (should use allowlist)
     MCP_ALL=$(run_with_timeout 10 openclaw config get "mcp.enableAllProjectMcpServers" 2>/dev/null || echo "")
     if [ "$MCP_ALL" = "true" ]; then
         result_warn "All project MCP servers enabled (use explicit allowlist instead)"
         MCP_ISSUES=$((MCP_ISSUES + 1))
     fi
 fi
-# Scan MCP config for suspicious tool descriptions (prompt injection in tool docstrings)
 MCP_CONFIG="$OPENCLAW_DIR/mcp.json"
 if [ -f "$MCP_CONFIG" ]; then
     MCP_INJECT=$(grep -iE "ignore[[:space:]]+previous|system[[:space:]]+prompt|override[[:space:]]+instruction|execute[[:space:]]+command|run[[:space:]]+this" "$MCP_CONFIG" 2>/dev/null || true)
@@ -968,72 +1177,96 @@ if [ "$MCP_ISSUES" -eq 0 ]; then
 fi
 
 # ============================================================
-# CHECK 33: ClawJacked - WebSocket Brute-Force Protection (NEW - Oasis Security, Feb 26 2026)
+# CHECK 26: PATH Hijacking & Command Resolution
+# (Merges old checks 37, 50)
 # ============================================================
-header 33 "Checking ClawJacked brute-force protection..."
+header 26 "Checking PATH hijacking and command resolution..."
 
-CLAWJACKED_ISSUES=0
-if command -v openclaw &>/dev/null; then
-    # ClawJacked exploits missing rate-limiting on WebSocket auth + auto-device registration
-    # Fixed in v2026.2.25; fully patched in v2026.2.26
-    if [ -n "$OC_VERSION" ] && [ "$OC_VERSION" != "unknown" ]; then
-        CJ_MAJOR=$(echo "$OC_VERSION" | cut -d'.' -f1)
-        CJ_MINOR=$(echo "$OC_VERSION" | cut -d'.' -f2)
-        CJ_PATCH=$(echo "$OC_VERSION" | cut -d'.' -f3 | cut -d'-' -f1)
-        CLAWJACKED_SAFE=false
-        if [ "$CJ_MAJOR" -ge 2026 ] 2>/dev/null; then
-            if [ "$CJ_MINOR" -ge 3 ] 2>/dev/null; then
-                CLAWJACKED_SAFE=true
-            elif [ "$CJ_MINOR" -eq 2 ] && [ "$CJ_PATCH" -ge 26 ] 2>/dev/null; then
-                CLAWJACKED_SAFE=true
+PATH26_ISSUES=0
+
+# Check for writable directories early in PATH with command shadowing (was check 37)
+IFS=':' read -ra PATH_DIRS <<< "$PATH"
+for PDIR in "${PATH_DIRS[@]}"; do
+    if [ -d "$PDIR" ] && [ -w "$PDIR" ]; then
+        case "$PDIR" in
+            "$HOME/bin"|"$HOME/.local/bin"|"$HOME/.cargo/bin"|"$HOME/go/bin") continue ;;
+        esac
+        for CMD in node python3 bash curl git ssh openclaw; do
+            if [ -f "$PDIR/$CMD" ] && [ -x "$PDIR/$CMD" ]; then
+                SYS_BIN=$(which -a "$CMD" 2>/dev/null | tail -1)
+                if [ -n "$SYS_BIN" ] && [ "$PDIR/$CMD" != "$SYS_BIN" ]; then
+                    result_critical "PATH hijack: $PDIR/$CMD shadows system $SYS_BIN (GHSA-jqpq)"
+                    PATH26_ISSUES=$((PATH26_ISSUES + 1))
+                fi
             fi
-        fi
-        if [ "$CLAWJACKED_SAFE" = false ]; then
-            result_critical "OpenClaw v$OC_VERSION vulnerable to ClawJacked (WebSocket brute-force). Update to v2026.2.26+"
-            CLAWJACKED_ISSUES=$((CLAWJACKED_ISSUES + 1))
-        fi
+        done
     fi
+done
 
-    # Check if gateway password is set (weak/missing passwords enable ClawJacked)
-    GW_AUTH_TOKEN=$(run_with_timeout 5 openclaw config get "gateway.auth.token" 2>/dev/null || echo "")
-    if [ -z "$GW_AUTH_TOKEN" ] || [ "$GW_AUTH_TOKEN" = "null" ]; then
-        result_warn "No gateway auth token set (ClawJacked can brute-force default credentials)"
-        CLAWJACKED_ISSUES=$((CLAWJACKED_ISSUES + 1))
-    fi
-
-    # Check rate limiting config (post-patch feature)
-    RATE_LIMIT=$(run_with_timeout 5 openclaw config get "gateway.auth.rateLimit" 2>/dev/null || echo "")
-    if [ "$RATE_LIMIT" = "off" ] || [ "$RATE_LIMIT" = "false" ]; then
-        result_warn "Gateway auth rate limiting is disabled (enables brute-force attacks)"
-        CLAWJACKED_ISSUES=$((CLAWJACKED_ISSUES + 1))
+# Check for planted binaries in workspace
+if [ -d "$WORKSPACE_DIR" ]; then
+    PLANTED=$(find "$WORKSPACE_DIR" -maxdepth 3 -type f -name "node" -o -name "python3" -o -name "bash" -o -name "curl" -o -name "git" 2>/dev/null | head -5)
+    if [ -n "$PLANTED" ]; then
+        while IFS= read -r PBIN; do
+            if [ -x "$PBIN" ]; then
+                result_critical "Planted binary in workspace: $PBIN (PATH hijack vector)"
+                PATH26_ISSUES=$((PATH26_ISSUES + 1))
+            fi
+        done <<< "$PLANTED"
     fi
 fi
-if [ "$CLAWJACKED_ISSUES" -eq 0 ]; then
-    result_clean "ClawJacked protections in place"
+
+# CVE-2026-29610 version check (was check 50, fixed v2026.2.14)
+if command -v openclaw &>/dev/null && [ -n "${OC_VERSION:-}" ] && [ "${OC_VERSION:-}" != "unknown" ]; then
+    if version_advisory "2026.2.14" "PATH command hijacking via unsafe resolution (CVE-2026-29610)" "warn"; then
+        PATH26_ISSUES=$((PATH26_ISSUES + 1))
+    fi
+fi
+
+# Detect writable PATH directories preceding system dirs
+SYSTEM_DIRS="/usr/bin /bin /usr/sbin /sbin"
+IFS=':' read -ra P610_DIRS <<< "$PATH"
+FOUND_SYSTEM=false
+for PDIR610 in "${P610_DIRS[@]}"; do
+    for SDIR in $SYSTEM_DIRS; do
+        if [ "$PDIR610" = "$SDIR" ]; then
+            FOUND_SYSTEM=true
+            break
+        fi
+    done
+    if [ "$FOUND_SYSTEM" = false ] && [ -d "$PDIR610" ]; then
+        DIR_PERMS=$(stat -f "%Lp" "$PDIR610" 2>/dev/null || stat -c "%a" "$PDIR610" 2>/dev/null || echo "")
+        if [ -n "$DIR_PERMS" ]; then
+            case "$DIR_PERMS" in
+                *7|*6|*3|*2)
+                    result_warn "Writable dir '$PDIR610' precedes system dirs in PATH (CVE-2026-29610 hijack vector)"
+                    PATH26_ISSUES=$((PATH26_ISSUES + 1))
+                    ;;
+            esac
+        fi
+    fi
+done
+
+if [ "$PATH26_ISSUES" -eq 0 ]; then
+    result_clean "No PATH hijacking indicators found"
 fi
 
 # ============================================================
-# CHECK 34: SSRF Protection (NEW - CVE-2026-26322, CVE-2026-27488)
+# CHECK 27: SSRF Protection
+# (was old check 34)
 # ============================================================
-header 34 "Checking SSRF protections (CVE-2026-26322, CVE-2026-27488)..."
+header 27 "Checking SSRF protections (CVE-2026-26322, CVE-2026-27488)..."
 
 SSRF_ISSUES=0
-if command -v openclaw &>/dev/null; then
-    # CVE-2026-26322: Gateway SSRF via tool-supplied gatewayUrl (CVSS 7.6, fixed v2026.2.14)
-    # CVE-2026-27488: Cron webhook SSRF (CVSS 6.9, fixed v2026.2.19)
-    if [ -n "$OC_VERSION" ] && [ "$OC_VERSION" != "unknown" ]; then
-        SSRF_MAJOR=$(echo "$OC_VERSION" | cut -d'.' -f1)
-        SSRF_MINOR=$(echo "$OC_VERSION" | cut -d'.' -f2)
-        SSRF_PATCH=$(echo "$OC_VERSION" | cut -d'.' -f3 | cut -d'-' -f1)
-        if [ "$SSRF_MAJOR" -eq 2026 ] 2>/dev/null && [ "$SSRF_MINOR" -eq 2 ] 2>/dev/null; then
-            if [ "$SSRF_PATCH" -lt 19 ] 2>/dev/null; then
-                result_warn "OpenClaw v$OC_VERSION vulnerable to cron webhook SSRF (CVE-2026-27488). Update to v2026.2.19+"
-                SSRF_ISSUES=$((SSRF_ISSUES + 1))
-            fi
-        elif [ "$SSRF_MAJOR" -eq 2026 ] 2>/dev/null && [ "$SSRF_MINOR" -lt 2 ] 2>/dev/null; then
-            result_critical "OpenClaw v$OC_VERSION vulnerable to gateway SSRF (CVE-2026-26322) and cron SSRF (CVE-2026-27488)"
-            SSRF_ISSUES=$((SSRF_ISSUES + 1))
-        fi
+if command -v openclaw &>/dev/null && [ -n "${OC_VERSION:-}" ] && [ "${OC_VERSION:-}" != "unknown" ]; then
+    # CVE-2026-26322: Gateway SSRF (fixed v2026.2.14)
+    # CVE-2026-27488: Cron webhook SSRF (fixed v2026.2.19)
+    if version_advisory "2026.2.19" "cron webhook SSRF (CVE-2026-27488)" "warn"; then
+        SSRF_ISSUES=$((SSRF_ISSUES + 1))
+    fi
+    if version_lt "$OC_VERSION" "2026.2.14"; then
+        result_critical "OpenClaw v$OC_VERSION also vulnerable to gateway SSRF (CVE-2026-26322)"
+        SSRF_ISSUES=$((SSRF_ISSUES + 1))
     fi
 
     # Check if cron webhook URLs point to internal/metadata endpoints
@@ -1048,70 +1281,87 @@ if [ "$SSRF_ISSUES" -eq 0 ]; then
 fi
 
 # ============================================================
-# CHECK 35: Exec safeBins Validation Bypass (NEW - CVE-2026-28363)
+# CHECK 28: Path Traversal & File Handling
+# (Merges old checks 39, 42, 47)
 # ============================================================
-header 35 "Checking exec safeBins bypass (CVE-2026-28363)..."
+header 28 "Checking path traversal and file handling..."
 
-SAFEBINS_ISSUES=0
-if command -v openclaw &>/dev/null; then
-    # CVE-2026-28363 (CVSS 9.9): sort --compress-prog bypasses safeBins allowlist
-    # Fixed in v2026.2.23
-    if [ -n "$OC_VERSION" ] && [ "$OC_VERSION" != "unknown" ]; then
-        SB_MAJOR=$(echo "$OC_VERSION" | cut -d'.' -f1)
-        SB_MINOR=$(echo "$OC_VERSION" | cut -d'.' -f2)
-        SB_PATCH=$(echo "$OC_VERSION" | cut -d'.' -f3 | cut -d'-' -f1)
-        SB_VULN=false
-        if [ "$SB_MAJOR" -eq 2026 ] 2>/dev/null; then
-            if [ "$SB_MINOR" -lt 2 ] 2>/dev/null; then
-                SB_VULN=true
-            elif [ "$SB_MINOR" -eq 2 ] && [ "$SB_PATCH" -lt 23 ] 2>/dev/null; then
-                SB_VULN=true
+PTRAV28_ISSUES=0
+
+if command -v openclaw &>/dev/null && [ -n "${OC_VERSION:-}" ] && [ "${OC_VERSION:-}" != "unknown" ]; then
+    # macOS deep link truncation (was check 39, CVE-2026-26320, fixed v2026.2.14)
+    if [ "$(uname -s)" = "Darwin" ]; then
+        if version_advisory "2026.2.14" "deep link truncation (CVE-2026-26320)" "warn"; then
+            PTRAV28_ISSUES=$((PTRAV28_ISSUES + 1))
+        fi
+    fi
+
+    # Browser control API path traversal (was check 42, CVE-2026-28462, fixed v2026.2.13)
+    if version_advisory "2026.2.13" "browser control API path traversal (CVE-2026-28462, CVSS 7.5)"; then
+        PTRAV28_ISSUES=$((PTRAV28_ISSUES + 1))
+    fi
+
+    # TAR archive path traversal (was check 47, CVE-2026-28453, fixed v2026.2.14)
+    if version_advisory "2026.2.14" "TAR archive path traversal (CVE-2026-28453)"; then
+        PTRAV28_ISSUES=$((PTRAV28_ISSUES + 1))
+    fi
+fi
+
+# Check recent deep link invocations for suspiciously long payloads
+if [ "$(uname -s)" = "Darwin" ] && [ -d "$LOG_DIR" ]; then
+    LONG_LINKS=$(grep -rl 'openclaw://' "$LOG_DIR" 2>/dev/null | head -3)
+    if [ -n "$LONG_LINKS" ]; then
+        while IFS= read -r LFILE; do
+            if grep -E 'openclaw://[^ ]{240,}' "$LFILE" &>/dev/null; then
+                result_warn "Long deep link (>240 chars) found in logs — potential CVE-2026-26320 exploit attempt"
+                PTRAV28_ISSUES=$((PTRAV28_ISSUES + 1))
+                break
             fi
-        fi
-        if [ "$SB_VULN" = true ]; then
-            result_critical "OpenClaw v$OC_VERSION vulnerable to CVE-2026-28363 (CVSS 9.9 safeBins bypass via sort --compress-prog). Update to v2026.2.23+"
-            SAFEBINS_ISSUES=$((SAFEBINS_ISSUES + 1))
-        fi
-    fi
-
-    # Check if sort is in safeBins (even on patched versions, audit the config)
-    SAFE_BINS=$(run_with_timeout 5 openclaw config get "tools.exec.safeBins" 2>/dev/null || echo "")
-    if echo "$SAFE_BINS" | grep -q '"sort"' 2>/dev/null; then
-        log "  INFO: 'sort' is in safeBins list (ensure v2026.2.23+ for CVE-2026-28363 fix)"
+        done <<< "$LONG_LINKS"
     fi
 fi
-if [ "$SAFEBINS_ISSUES" -eq 0 ]; then
-    result_clean "Exec safeBins validation acceptable"
+
+if [ "$PTRAV28_ISSUES" -eq 0 ]; then
+    result_clean "Path traversal and file handling acceptable"
 fi
 
 # ============================================================
-# CHECK 36: ACP Permission Auto-Approval (NEW - GHSA-7jx5-9fjg-hp4m)
+# CHECK 29: DoS Protection
+# (Merges old checks 46, 48)
 # ============================================================
-header 36 "Checking ACP auto-approval bypass (GHSA-7jx5)..."
+header 29 "Checking denial-of-service protections..."
+
+DOS29_ISSUES=0
+if command -v openclaw &>/dev/null && [ -n "${OC_VERSION:-}" ] && [ "${OC_VERSION:-}" != "unknown" ]; then
+    # Webhook DoS (was check 46, CVE-2026-28478, fixed v2026.2.13)
+    if version_advisory "2026.2.13" "webhook handlers lack body size/time limits (CVE-2026-28478)" "warn"; then
+        DOS29_ISSUES=$((DOS29_ISSUES + 1))
+    fi
+
+    # fetchWithGuard memory exhaustion (was check 48, CVE-2026-29609, fixed v2026.2.14)
+    if version_advisory "2026.2.14" "fetchWithGuard memory exhaustion DoS (CVE-2026-29609, CVSS 7.5)" "warn"; then
+        DOS29_ISSUES=$((DOS29_ISSUES + 1))
+    fi
+fi
+
+if [ "$DOS29_ISSUES" -eq 0 ]; then
+    result_clean "DoS protections acceptable"
+fi
+
+# ============================================================
+# CHECK 30: ACP Permission Auto-Approval
+# (was old check 36)
+# ============================================================
+header 30 "Checking ACP auto-approval bypass (GHSA-7jx5)..."
 
 ACP_ISSUES=0
 if command -v openclaw &>/dev/null; then
-    # GHSA-7jx5-9fjg-hp4m (CVSS 8.2): ACP client auto-approves tool calls
-    # based on untrusted metadata. Fixed in v2026.2.23.
-    if [ -n "$OC_VERSION" ] && [ "$OC_VERSION" != "unknown" ]; then
-        ACP_MAJOR=$(echo "$OC_VERSION" | cut -d'.' -f1)
-        ACP_MINOR=$(echo "$OC_VERSION" | cut -d'.' -f2)
-        ACP_PATCH=$(echo "$OC_VERSION" | cut -d'.' -f3 | cut -d'-' -f1)
-        ACP_VULN=false
-        if [ "$ACP_MAJOR" -eq 2026 ] 2>/dev/null; then
-            if [ "$ACP_MINOR" -lt 2 ] 2>/dev/null; then
-                ACP_VULN=true
-            elif [ "$ACP_MINOR" -eq 2 ] && [ "$ACP_PATCH" -lt 23 ] 2>/dev/null; then
-                ACP_VULN=true
-            fi
-        fi
-        if [ "$ACP_VULN" = true ]; then
-            result_warn "OpenClaw v$OC_VERSION vulnerable to GHSA-7jx5 (ACP auto-approval bypass). Update to v2026.2.23+"
+    if [ -n "${OC_VERSION:-}" ] && [ "${OC_VERSION:-}" != "unknown" ]; then
+        if version_advisory "2026.2.23" "GHSA-7jx5 ACP auto-approval bypass" "warn"; then
             ACP_ISSUES=$((ACP_ISSUES + 1))
         fi
     fi
 
-    # Check ACP configuration
     ACP_AUTO=$(run_with_timeout 5 openclaw config get "acp.autoApprove" 2>/dev/null || echo "")
     if [ "$ACP_AUTO" = "true" ] || [ "$ACP_AUTO" = "all" ]; then
         result_warn "ACP auto-approve is enabled (tool calls bypass interactive approval)"
@@ -1123,79 +1373,25 @@ if [ "$ACP_ISSUES" -eq 0 ]; then
 fi
 
 # ============================================================
-# CHECK 37: PATH Hijacking / Command Hijacking (GHSA-jqpq-mgvm-f9r6)
+# CHECK 31: Skill Env Override Host Injection
+# (was old check 38)
 # ============================================================
-header 37 "Checking PATH hijacking risk (GHSA-jqpq)..."
-
-PATH_ISSUES=0
-# GHSA-jqpq-mgvm-f9r6: OpenClaw resolves commands via user-controlled PATH
-# without enforcing absolute paths, allowing attacker-placed binaries in
-# early PATH directories to hijack exec calls.
-
-# Check for writable directories early in PATH
-IFS=':' read -ra PATH_DIRS <<< "$PATH"
-for PDIR in "${PATH_DIRS[@]}"; do
-    if [ -d "$PDIR" ] && [ -w "$PDIR" ]; then
-        # Skip standard writable dirs (user's own bin dirs are expected)
-        case "$PDIR" in
-            "$HOME/bin"|"$HOME/.local/bin"|"$HOME/.cargo/bin"|"$HOME/go/bin") continue ;;
-        esac
-        # Check if the dir contains suspicious shadowing of common commands
-        for CMD in node python3 bash curl git ssh openclaw; do
-            if [ -f "$PDIR/$CMD" ] && [ -x "$PDIR/$CMD" ]; then
-                # Check if it shadows a system binary
-                SYS_BIN=$(which -a "$CMD" 2>/dev/null | tail -1)
-                if [ -n "$SYS_BIN" ] && [ "$PDIR/$CMD" != "$SYS_BIN" ]; then
-                    result_critical "PATH hijack: $PDIR/$CMD shadows system $SYS_BIN (GHSA-jqpq)"
-                    PATH_ISSUES=$((PATH_ISSUES + 1))
-                fi
-            fi
-        done
-    fi
-done
-
-# Check OpenClaw workspace for planted binaries
-if [ -d "$WORKSPACE_DIR" ]; then
-    PLANTED=$(find "$WORKSPACE_DIR" -maxdepth 3 -type f -name "node" -o -name "python3" -o -name "bash" -o -name "curl" -o -name "git" 2>/dev/null | head -5)
-    if [ -n "$PLANTED" ]; then
-        while IFS= read -r PBIN; do
-            if [ -x "$PBIN" ]; then
-                result_critical "Planted binary in workspace: $PBIN (PATH hijack vector)"
-                PATH_ISSUES=$((PATH_ISSUES + 1))
-            fi
-        done <<< "$PLANTED"
-    fi
-fi
-
-if [ "$PATH_ISSUES" -eq 0 ]; then
-    result_clean "No PATH hijacking indicators found"
-fi
-
-# ============================================================
-# CHECK 38: Skill Env Override Host Injection (GHSA-82g8-464f-2mv7)
-# ============================================================
-header 38 "Checking skill env override host injection (GHSA-82g8)..."
+header 31 "Checking skill env override host injection (GHSA-82g8)..."
 
 ENV_OVERRIDE_ISSUES=0
-# GHSA-82g8-464f-2mv7 (CVSS 2.7): Skills can override environment variables
-# including HOST, PORT, and internal service URLs to redirect traffic.
-
 if [ -d "$SKILLS_DIR" ]; then
     while IFS= read -r SKILL_DIR; do
         SKILL_NAME=$(basename "$SKILL_DIR")
-        # Skip self
         if [ "$SKILL_NAME" = "$SELF_DIR_NAME" ]; then continue; fi
 
         SKILL_MD="$SKILL_DIR/SKILL.md"
         if [ -f "$SKILL_MD" ]; then
-            # Check for env overrides that set HOST/PORT/URL variables
             if grep -qiE '^\s*"?(HOST|PORT|OPENCLAW_|API_URL|BASE_URL|GATEWAY_URL|SERVER_URL)"?\s*:' "$SKILL_MD" 2>/dev/null; then
                 result_warn "Skill '$SKILL_NAME' declares HOST/PORT/URL env override (GHSA-82g8)"
                 ENV_OVERRIDE_ISSUES=$((ENV_OVERRIDE_ISSUES + 1))
             fi
         fi
 
-        # Also check package.json / skill config for env overrides
         for CFG in "$SKILL_DIR/package.json" "$SKILL_DIR/config.json" "$SKILL_DIR/.env"; do
             if [ -f "$CFG" ]; then
                 if grep -qiE '(OPENCLAW_HOME|OPENCLAW_DIR|GATEWAY_URL|API_BASE)' "$CFG" 2>/dev/null; then
@@ -1212,513 +1408,60 @@ if [ "$ENV_OVERRIDE_ISSUES" -eq 0 ]; then
 fi
 
 # ============================================================
-# CHECK 39: macOS Deep Link Truncation (CVE-2026-26320)
+# CHECK 32: Privilege Escalation & Scope Abuse
+# (Merges old checks 55, 56, 61)
 # ============================================================
-header 39 "Checking deep link truncation risk (CVE-2026-26320)..."
+header 32 "Checking privilege escalation and scope abuse..."
 
-DEEPLINK_ISSUES=0
-# CVE-2026-26320: macOS deep link handler truncates at 240 characters,
-# hiding malicious payload after the preview cutoff. The notification
-# preview shows only the first ~240 chars, so attackers pad benign text
-# followed by malicious instructions.
+PRIV32_ISSUES=0
+if command -v openclaw &>/dev/null && [ -n "${OC_VERSION:-}" ] && [ "${OC_VERSION:-}" != "unknown" ]; then
+    # Device pairing credential exposure (was check 55, GHSA-7h7g, fixed v2026.3.12)
+    if version_advisory "2026.3.12" "device pairing exposes long-lived credentials (GHSA-7h7g)" "warn"; then
+        PRIV32_ISSUES=$((PRIV32_ISSUES + 1))
+    fi
 
-if [ "$(uname -s)" = "Darwin" ]; then
-    # Check if OpenClaw is registered as a deep link handler
-    DEEP_LINK_HANDLER=$(defaults read com.openclaw.app 2>/dev/null || echo "")
-    if command -v openclaw &>/dev/null; then
-        if [ -n "$OC_VERSION" ] && [ "$OC_VERSION" != "unknown" ]; then
-            DL_MAJOR=$(echo "$OC_VERSION" | cut -d'.' -f1)
-            DL_MINOR=$(echo "$OC_VERSION" | cut -d'.' -f2)
-            DL_PATCH=$(echo "$OC_VERSION" | cut -d'.' -f3 | cut -d'-' -f1)
-            DL_VULN=false
-            if [ "$DL_MAJOR" -eq 2026 ] 2>/dev/null; then
-                if [ "$DL_MINOR" -lt 2 ] 2>/dev/null; then
-                    DL_VULN=true
-                elif [ "$DL_MINOR" -eq 2 ] && [ "$DL_PATCH" -lt 14 ] 2>/dev/null; then
-                    DL_VULN=true
-                fi
-            fi
-            if [ "$DL_VULN" = true ]; then
-                result_warn "OpenClaw v$OC_VERSION vulnerable to deep link truncation (CVE-2026-26320). Update to v2026.2.14+"
-                DEEPLINK_ISSUES=$((DEEPLINK_ISSUES + 1))
-            fi
+    DEVICE_JSON="$OPENCLAW_DIR/device.json"
+    if [ -f "$DEVICE_JSON" ] && [ "$PRIV32_ISSUES" -gt 0 ]; then
+        log "  device.json exists — rotate credentials after upgrading"
+    fi
+
+    # Operator privilege escalation (was check 56, GHSA-vmhq, fixed v2026.3.12)
+    if version_advisory "2026.3.12" "operator accounts can escalate to admin (GHSA-vmhq)" "warn"; then
+        PRIV32_ISSUES=$((PRIV32_ISSUES + 1))
+    fi
+
+    # Shared-auth scope escalation (was check 61)
+    GATEWAY_AUTH_MODE=$(run_with_timeout 10 openclaw config get "gateway.auth.mode" 2>/dev/null || echo "")
+    PAIRING_MODE=$(run_with_timeout 10 openclaw config get "pairing.enabled" 2>/dev/null || echo "")
+
+    if version_lt "${OC_VERSION:-unknown}" "2026.3.13"; then
+        if [ "$GATEWAY_AUTH_MODE" = "password" ] || [ "$GATEWAY_AUTH_MODE" = "token" ]; then
+            result_critical "OpenClaw $OC_VERSION may allow shared-auth clients to self-assert elevated scopes (GHSA-rqpp-rjj8-7wv8)"
+            PRIV32_ISSUES=$((PRIV32_ISSUES + 1))
         fi
-    fi
-
-    # Check recent deep link invocations in logs for suspiciously long payloads
-    if [ -d "$LOG_DIR" ]; then
-        LONG_LINKS=$(grep -rl 'openclaw://' "$LOG_DIR" 2>/dev/null | head -3)
-        if [ -n "$LONG_LINKS" ]; then
-            while IFS= read -r LFILE; do
-                if grep -E 'openclaw://[^ ]{240,}' "$LFILE" &>/dev/null; then
-                    result_warn "Long deep link (>240 chars) found in logs — potential CVE-2026-26320 exploit attempt"
-                    DEEPLINK_ISSUES=$((DEEPLINK_ISSUES + 1))
-                    break
-                fi
-            done <<< "$LONG_LINKS"
-        fi
-    fi
-else
-    log "  Not macOS, skipping deep link check"
-fi
-
-if [ "$DEEPLINK_ISSUES" -eq 0 ]; then
-    result_clean "Deep link truncation risk acceptable"
-fi
-
-# ============================================================
-# CHECK 40: Log Poisoning / WebSocket Header Injection
-# ============================================================
-header 40 "Checking log poisoning / WebSocket header injection..."
-
-LOG_POISON_ISSUES=0
-# WebSocket headers are logged without sanitization, allowing attackers
-# to inject ANSI escape sequences, fake log entries, or terminal control
-# characters via crafted WebSocket upgrade requests. This can mislead
-# administrators reviewing logs or exploit terminal emulator vulnerabilities.
-
-if [ -d "$LOG_DIR" ]; then
-    # Check for ANSI escape sequences in log files (indicator of injection)
-    ANSI_HITS=$(grep -rlP '\x1b\[' "$LOG_DIR" 2>/dev/null | head -5)
-    if [ -n "$ANSI_HITS" ]; then
-        ANSI_COUNT=$(echo "$ANSI_HITS" | wc -l | tr -d ' ')
-        result_warn "ANSI escape sequences found in $ANSI_COUNT log file(s) — possible log poisoning"
-        LOG_POISON_ISSUES=$((LOG_POISON_ISSUES + 1))
-    fi
-
-    # Check for fake log entry patterns (injected timestamps/severity)
-    FAKE_ENTRIES=$(grep -rlE '\]\s*(INFO|WARN|ERROR|CRITICAL)\s*:.*\[20[0-9]{2}-' "$LOG_DIR" 2>/dev/null | head -3)
-    if [ -n "$FAKE_ENTRIES" ]; then
-        # Verify these are actual injections (entries within entries)
-        while IFS= read -r FFILE; do
-            NESTED=$(grep -cE '^\[.*\]\s*(INFO|ERROR).*\[20[0-9]{2}-[0-9]{2}' "$FFILE" 2>/dev/null || echo "0")
-            if [ "$NESTED" -gt 0 ]; then
-                result_warn "Possible injected log entries in $(basename "$FFILE") — log poisoning indicator"
-                LOG_POISON_ISSUES=$((LOG_POISON_ISSUES + 1))
-                break
-            fi
-        done <<< "$FAKE_ENTRIES"
-    fi
-
-    # Check for null bytes or control characters in logs
-    CTRL_HITS=$(grep -rlP '[\x00-\x08\x0e-\x1f]' "$LOG_DIR" 2>/dev/null | grep -v '.log.gz' | head -3)
-    if [ -n "$CTRL_HITS" ]; then
-        result_warn "Control characters found in logs — possible WebSocket header injection"
-        LOG_POISON_ISSUES=$((LOG_POISON_ISSUES + 1))
-    fi
-fi
-
-# Check log redaction covers WebSocket headers
-if command -v openclaw &>/dev/null; then
-    LOG_REDACT=$(run_with_timeout 5 openclaw config get "logging.redactHeaders" 2>/dev/null || echo "")
-    if [ -z "$LOG_REDACT" ] || [ "$LOG_REDACT" = "false" ] || [ "$LOG_REDACT" = "null" ]; then
-        result_warn "WebSocket header redaction not enabled (logging.redactHeaders)"
-        LOG_POISON_ISSUES=$((LOG_POISON_ISSUES + 1))
-    fi
-fi
-
-if [ "$LOG_POISON_ISSUES" -eq 0 ]; then
-    result_clean "No log poisoning indicators found"
-fi
-
-# ============================================================
-# CHECK 41: Browser Relay CDP Unauthenticated Access (CVE-2026-28458)
-# ============================================================
-header 41 "Checking Browser Relay CDP auth (CVE-2026-28458)..."
-
-CDP_ISSUES=0
-# CVE-2026-28458 (CVSS 7.5): Browser Relay /cdp WebSocket endpoint does not
-# require auth tokens. Websites can connect via ws://127.0.0.1:18792/cdp to
-# steal session cookies and execute JS in other tabs. Fixed in v2026.2.1.
-
-# Check if Browser Relay port is listening
-if command -v lsof &>/dev/null; then
-    CDP_LISTEN=$(lsof -iTCP:18792 -sTCP:LISTEN -nP 2>/dev/null | grep -v COMMAND)
-    if [ -n "$CDP_LISTEN" ]; then
-        log "  Browser Relay is listening on port 18792"
-        if command -v openclaw &>/dev/null && [ -n "$OC_VERSION" ] && [ "$OC_VERSION" != "unknown" ]; then
-            CDP_MAJOR=$(echo "$OC_VERSION" | cut -d'.' -f1)
-            CDP_MINOR=$(echo "$OC_VERSION" | cut -d'.' -f2)
-            CDP_PATCH=$(echo "$OC_VERSION" | cut -d'.' -f3 | cut -d'-' -f1)
-            CDP_VULN=false
-            if [ "$CDP_MAJOR" -eq 2026 ] 2>/dev/null; then
-                if [ "$CDP_MINOR" -lt 2 ] 2>/dev/null; then
-                    CDP_VULN=true
-                elif [ "$CDP_MINOR" -eq 2 ] && [ "$CDP_PATCH" -lt 1 ] 2>/dev/null; then
-                    CDP_VULN=true
-                fi
-            fi
-            if [ "$CDP_VULN" = true ]; then
-                result_critical "Browser Relay /cdp endpoint unauthenticated (CVE-2026-28458). Update to v2026.2.1+"
-                CDP_ISSUES=$((CDP_ISSUES + 1))
-            fi
+        if [ -n "$PAIRING_MODE" ] && [ "$PAIRING_MODE" != "false" ] && [ "$PAIRING_MODE" != "off" ]; then
+            result_critical "OpenClaw $OC_VERSION may allow pairing-scoped credentials to escalate privileges (GHSA-4jpw, GHSA-63f5)"
+            PRIV32_ISSUES=$((PRIV32_ISSUES + 1))
         fi
     fi
 fi
-if [ "$CDP_ISSUES" -eq 0 ]; then
-    result_clean "Browser Relay CDP auth acceptable"
+
+if [ "$PRIV32_ISSUES" -eq 0 ]; then
+    result_clean "Privilege escalation and scope abuse checks passed"
 fi
 
 # ============================================================
-# CHECK 42: Browser Control API Path Traversal (CVE-2026-28462)
+# CHECK 33: SHA-1 Cache Poisoning
+# (was old check 51)
 # ============================================================
-header 42 "Checking browser control path traversal (CVE-2026-28462)..."
-
-BCTRL_ISSUES=0
-# CVE-2026-28462 (CVSS 7.5): Browser control API accepts user-supplied output
-# paths for trace/download without constraining to temp dirs. Path traversal
-# via /trace/stop, /wait/download, /download. Fixed in v2026.2.13.
-
-if command -v openclaw &>/dev/null && [ -n "$OC_VERSION" ] && [ "$OC_VERSION" != "unknown" ]; then
-    BC_MAJOR=$(echo "$OC_VERSION" | cut -d'.' -f1)
-    BC_MINOR=$(echo "$OC_VERSION" | cut -d'.' -f2)
-    BC_PATCH=$(echo "$OC_VERSION" | cut -d'.' -f3 | cut -d'-' -f1)
-    BC_VULN=false
-    if [ "$BC_MAJOR" -eq 2026 ] 2>/dev/null; then
-        if [ "$BC_MINOR" -lt 2 ] 2>/dev/null; then
-            BC_VULN=true
-        elif [ "$BC_MINOR" -eq 2 ] && [ "$BC_PATCH" -lt 13 ] 2>/dev/null; then
-            BC_VULN=true
-        fi
-    fi
-    if [ "$BC_VULN" = true ]; then
-        result_critical "Browser control API path traversal (CVE-2026-28462). Update to v2026.2.13+"
-        BCTRL_ISSUES=$((BCTRL_ISSUES + 1))
-    fi
-fi
-if [ "$BCTRL_ISSUES" -eq 0 ]; then
-    result_clean "Browser control path handling acceptable"
-fi
-
-# ============================================================
-# CHECK 43: Exec-Approvals Shell Expansion Bypass (CVE-2026-28463)
-# ============================================================
-header 43 "Checking exec-approvals shell expansion bypass (CVE-2026-28463)..."
-
-SHEXP_ISSUES=0
-# CVE-2026-28463: exec-approvals allowlist validates pre-expansion argv tokens
-# but execution uses real shell expansion. head/tail/grep in safeBins can read
-# arbitrary files via glob patterns or env vars. Fixed in v2026.2.14.
-
-if command -v openclaw &>/dev/null && [ -n "$OC_VERSION" ] && [ "$OC_VERSION" != "unknown" ]; then
-    SE_MAJOR=$(echo "$OC_VERSION" | cut -d'.' -f1)
-    SE_MINOR=$(echo "$OC_VERSION" | cut -d'.' -f2)
-    SE_PATCH=$(echo "$OC_VERSION" | cut -d'.' -f3 | cut -d'-' -f1)
-    SE_VULN=false
-    if [ "$SE_MAJOR" -eq 2026 ] 2>/dev/null; then
-        if [ "$SE_MINOR" -lt 2 ] 2>/dev/null; then
-            SE_VULN=true
-        elif [ "$SE_MINOR" -eq 2 ] && [ "$SE_PATCH" -lt 14 ] 2>/dev/null; then
-            SE_VULN=true
-        fi
-    fi
-    if [ "$SE_VULN" = true ]; then
-        result_critical "Exec-approvals shell expansion bypass (CVE-2026-28463). Update to v2026.2.14+"
-        SHEXP_ISSUES=$((SHEXP_ISSUES + 1))
-    fi
-
-    # Audit safeBins for commands vulnerable to glob-based file reads
-    SAFE_BINS=$(run_with_timeout 5 openclaw config get "tools.exec.safeBins" 2>/dev/null || echo "")
-    for RBIN in head tail grep cat; do
-        if echo "$SAFE_BINS" | grep -q "\"$RBIN\"" 2>/dev/null; then
-            log "  INFO: '$RBIN' in safeBins — ensure v2026.2.14+ for CVE-2026-28463 fix"
-        fi
-    done
-fi
-if [ "$SHEXP_ISSUES" -eq 0 ]; then
-    result_clean "Exec-approvals shell expansion handling acceptable"
-fi
-
-# ============================================================
-# CHECK 44: Approval Field Injection / Exec Gating Bypass (CVE-2026-28466)
-# ============================================================
-header 44 "Checking approval field injection bypass (CVE-2026-28466)..."
-
-AFI_ISSUES=0
-# CVE-2026-28466: Gateway fails to sanitize internal approval fields in
-# node.invoke params, letting authenticated clients bypass exec approval
-# gating for system.run commands. Fixed in v2026.2.14.
-
-if command -v openclaw &>/dev/null && [ -n "$OC_VERSION" ] && [ "$OC_VERSION" != "unknown" ]; then
-    AF_MAJOR=$(echo "$OC_VERSION" | cut -d'.' -f1)
-    AF_MINOR=$(echo "$OC_VERSION" | cut -d'.' -f2)
-    AF_PATCH=$(echo "$OC_VERSION" | cut -d'.' -f3 | cut -d'-' -f1)
-    AF_VULN=false
-    if [ "$AF_MAJOR" -eq 2026 ] 2>/dev/null; then
-        if [ "$AF_MINOR" -lt 2 ] 2>/dev/null; then
-            AF_VULN=true
-        elif [ "$AF_MINOR" -eq 2 ] && [ "$AF_PATCH" -lt 14 ] 2>/dev/null; then
-            AF_VULN=true
-        fi
-    fi
-    if [ "$AF_VULN" = true ]; then
-        result_critical "Approval field injection bypass (CVE-2026-28466). Update to v2026.2.14+"
-        AFI_ISSUES=$((AFI_ISSUES + 1))
-    fi
-fi
-if [ "$AFI_ISSUES" -eq 0 ]; then
-    result_clean "Approval field sanitization acceptable"
-fi
-
-# ============================================================
-# CHECK 45: Sandbox Browser Bridge Auth Bypass (CVE-2026-28468)
-# ============================================================
-header 45 "Checking sandbox browser bridge auth (CVE-2026-28468)..."
-
-SBB_ISSUES=0
-# CVE-2026-28468: Sandbox browser bridge server accepts requests without
-# gateway auth, allowing local attackers to access browser control endpoints.
-# Fixed in v2026.2.14.
-
-if command -v openclaw &>/dev/null && [ -n "$OC_VERSION" ] && [ "$OC_VERSION" != "unknown" ]; then
-    SB_MAJOR2=$(echo "$OC_VERSION" | cut -d'.' -f1)
-    SB_MINOR2=$(echo "$OC_VERSION" | cut -d'.' -f2)
-    SB_PATCH2=$(echo "$OC_VERSION" | cut -d'.' -f3 | cut -d'-' -f1)
-    SB_VULN2=false
-    if [ "$SB_MAJOR2" -eq 2026 ] 2>/dev/null; then
-        if [ "$SB_MINOR2" -lt 2 ] 2>/dev/null; then
-            SB_VULN2=true
-        elif [ "$SB_MINOR2" -eq 2 ] && [ "$SB_PATCH2" -lt 14 ] 2>/dev/null; then
-            SB_VULN2=true
-        fi
-    fi
-    if [ "$SB_VULN2" = true ]; then
-        result_warn "Sandbox browser bridge unauthenticated (CVE-2026-28468). Update to v2026.2.14+"
-        SBB_ISSUES=$((SBB_ISSUES + 1))
-    fi
-fi
-if [ "$SBB_ISSUES" -eq 0 ]; then
-    result_clean "Sandbox browser bridge auth acceptable"
-fi
-
-# ============================================================
-# CHECK 46: Webhook DoS — Oversized Payloads (CVE-2026-28478)
-# ============================================================
-header 46 "Checking webhook DoS / oversized payloads (CVE-2026-28478)..."
-
-WDOS_ISSUES=0
-# CVE-2026-28478: Webhook handlers buffer request bodies without strict byte
-# or time limits. Remote unauthenticated attackers can send oversized JSON or
-# slow uploads to cause memory pressure and availability degradation.
-# Fixed in v2026.2.13.
-
-if command -v openclaw &>/dev/null && [ -n "$OC_VERSION" ] && [ "$OC_VERSION" != "unknown" ]; then
-    WD_MAJOR=$(echo "$OC_VERSION" | cut -d'.' -f1)
-    WD_MINOR=$(echo "$OC_VERSION" | cut -d'.' -f2)
-    WD_PATCH=$(echo "$OC_VERSION" | cut -d'.' -f3 | cut -d'-' -f1)
-    WD_VULN=false
-    if [ "$WD_MAJOR" -eq 2026 ] 2>/dev/null; then
-        if [ "$WD_MINOR" -lt 2 ] 2>/dev/null; then
-            WD_VULN=true
-        elif [ "$WD_MINOR" -eq 2 ] && [ "$WD_PATCH" -lt 13 ] 2>/dev/null; then
-            WD_VULN=true
-        fi
-    fi
-    if [ "$WD_VULN" = true ]; then
-        result_warn "Webhook handlers lack body size/time limits (CVE-2026-28478). Update to v2026.2.13+"
-        WDOS_ISSUES=$((WDOS_ISSUES + 1))
-    fi
-fi
-if [ "$WDOS_ISSUES" -eq 0 ]; then
-    result_clean "Webhook body limits acceptable"
-fi
-
-# ============================================================
-# CHECK 47: TAR Archive Path Traversal (CVE-2026-28453)
-# ============================================================
-header 47 "Checking TAR archive path traversal (CVE-2026-28453)..."
-
-TAR_ISSUES=0
-# CVE-2026-28453: TAR archive extraction does not validate entry paths,
-# allowing ../../ traversal to write files outside intended directories.
-# Can enable config tampering and code execution. Fixed in v2026.2.14.
-
-if command -v openclaw &>/dev/null && [ -n "$OC_VERSION" ] && [ "$OC_VERSION" != "unknown" ]; then
-    TA_MAJOR=$(echo "$OC_VERSION" | cut -d'.' -f1)
-    TA_MINOR=$(echo "$OC_VERSION" | cut -d'.' -f2)
-    TA_PATCH=$(echo "$OC_VERSION" | cut -d'.' -f3 | cut -d'-' -f1)
-    TA_VULN=false
-    if [ "$TA_MAJOR" -eq 2026 ] 2>/dev/null; then
-        if [ "$TA_MINOR" -lt 2 ] 2>/dev/null; then
-            TA_VULN=true
-        elif [ "$TA_MINOR" -eq 2 ] && [ "$TA_PATCH" -lt 14 ] 2>/dev/null; then
-            TA_VULN=true
-        fi
-    fi
-    if [ "$TA_VULN" = true ]; then
-        result_critical "TAR archive path traversal (CVE-2026-28453). Update to v2026.2.14+"
-        TAR_ISSUES=$((TAR_ISSUES + 1))
-    fi
-fi
-if [ "$TAR_ISSUES" -eq 0 ]; then
-    result_clean "TAR archive handling acceptable"
-fi
-
-# ============================================================
-# CHECK 48: fetchWithGuard Memory Exhaustion DoS (CVE-2026-29609)
-# ============================================================
-header 48 "Checking fetchWithGuard memory DoS (CVE-2026-29609)..."
-
-FWG_ISSUES=0
-# CVE-2026-29609 (CVSS 7.5): fetchWithGuard allocates entire response payloads
-# in memory before enforcing maxBytes limits. Oversized responses without
-# Content-Length cause memory exhaustion. Fixed in v2026.2.14.
-
-if command -v openclaw &>/dev/null && [ -n "$OC_VERSION" ] && [ "$OC_VERSION" != "unknown" ]; then
-    FW_MAJOR=$(echo "$OC_VERSION" | cut -d'.' -f1)
-    FW_MINOR=$(echo "$OC_VERSION" | cut -d'.' -f2)
-    FW_PATCH=$(echo "$OC_VERSION" | cut -d'.' -f3 | cut -d'-' -f1)
-    FW_VULN=false
-    if [ "$FW_MAJOR" -eq 2026 ] 2>/dev/null; then
-        if [ "$FW_MINOR" -lt 2 ] 2>/dev/null; then
-            FW_VULN=true
-        elif [ "$FW_MINOR" -eq 2 ] && [ "$FW_PATCH" -lt 14 ] 2>/dev/null; then
-            FW_VULN=true
-        fi
-    fi
-    if [ "$FW_VULN" = true ]; then
-        result_warn "fetchWithGuard memory exhaustion DoS (CVE-2026-29609). Update to v2026.2.14+"
-        FWG_ISSUES=$((FWG_ISSUES + 1))
-    fi
-fi
-if [ "$FWG_ISSUES" -eq 0 ]; then
-    result_clean "fetchWithGuard memory handling acceptable"
-fi
-
-# ============================================================
-# CHECK 49: /agent/act No Authentication (CVE-2026-28485)
-# ============================================================
-header 49 "Checking /agent/act auth requirement (CVE-2026-28485)..."
-
-ACT_ISSUES=0
-# CVE-2026-28485: The browser-control HTTP route /agent/act lacks mandatory
-# authentication, allowing any local process or LAN host to trigger browser
-# actions on behalf of the agent. Fixed in v2026.2.12.
-
-if command -v openclaw &>/dev/null && [ -n "$OC_VERSION" ] && [ "$OC_VERSION" != "unknown" ]; then
-    ACT_MAJOR=$(echo "$OC_VERSION" | cut -d'.' -f1)
-    ACT_MINOR=$(echo "$OC_VERSION" | cut -d'.' -f2)
-    ACT_PATCH=$(echo "$OC_VERSION" | cut -d'.' -f3 | cut -d'-' -f1)
-    ACT_VULN=false
-    if [ "$ACT_MAJOR" -eq 2026 ] 2>/dev/null; then
-        if [ "$ACT_MINOR" -lt 2 ] 2>/dev/null; then
-            ACT_VULN=true
-        elif [ "$ACT_MINOR" -eq 2 ] && [ "$ACT_PATCH" -lt 12 ] 2>/dev/null; then
-            ACT_VULN=true
-        fi
-    fi
-    if [ "$ACT_VULN" = true ]; then
-        result_critical "/agent/act HTTP route unauthenticated (CVE-2026-28485). Update to v2026.2.12+"
-        ACT_ISSUES=$((ACT_ISSUES + 1))
-    fi
-fi
-
-# Check if browser extension is enabled (required for the endpoint to be reachable)
-if command -v openclaw &>/dev/null; then
-    BROWSER_EXT=$(run_with_timeout 5 openclaw config get "browser.extension.enabled" 2>/dev/null || echo "")
-    if [ "$BROWSER_EXT" = "true" ] && [ "$ACT_ISSUES" -gt 0 ]; then
-        log "  Browser extension is enabled — /agent/act attack surface is active"
-    elif [ "$BROWSER_EXT" = "true" ]; then
-        log "  INFO: Browser extension enabled; verify v2026.2.12+ for CVE-2026-28485 fix"
-    fi
-fi
-
-if [ "$ACT_ISSUES" -eq 0 ]; then
-    result_clean "/agent/act authentication acceptable"
-fi
-
-# ============================================================
-# CHECK 50: Command Hijacking via PATH (CVE-2026-29610)
-# ============================================================
-header 50 "Checking PATH command hijacking (CVE-2026-29610)..."
-
-PATH610_ISSUES=0
-# CVE-2026-29610: OpenClaw resolves command names against the user PATH without
-# normalising or pinning to absolute paths before version 2026.2.14. A writable
-# directory appearing before system directories in PATH allows a planted binary
-# to intercept openclaw exec calls. Fixed in v2026.2.14.
-# (Distinct from GHSA-jqpq which tracked a related but different code path.)
-
-if command -v openclaw &>/dev/null && [ -n "$OC_VERSION" ] && [ "$OC_VERSION" != "unknown" ]; then
-    P610_MAJOR=$(echo "$OC_VERSION" | cut -d'.' -f1)
-    P610_MINOR=$(echo "$OC_VERSION" | cut -d'.' -f2)
-    P610_PATCH=$(echo "$OC_VERSION" | cut -d'.' -f3 | cut -d'-' -f1)
-    P610_VULN=false
-    if [ "$P610_MAJOR" -eq 2026 ] 2>/dev/null; then
-        if [ "$P610_MINOR" -lt 2 ] 2>/dev/null; then
-            P610_VULN=true
-        elif [ "$P610_MINOR" -eq 2 ] && [ "$P610_PATCH" -lt 14 ] 2>/dev/null; then
-            P610_VULN=true
-        fi
-    fi
-    if [ "$P610_VULN" = true ]; then
-        result_warn "OpenClaw v$OC_VERSION vulnerable to PATH command hijacking (CVE-2026-29610). Update to v2026.2.14+"
-        PATH610_ISSUES=$((PATH610_ISSUES + 1))
-    fi
-fi
-
-# Detect writable PATH directories that appear before standard system dirs
-SYSTEM_DIRS="/usr/bin /bin /usr/sbin /sbin"
-IFS=':' read -ra P610_DIRS <<< "$PATH"
-FOUND_SYSTEM=false
-for PDIR610 in "${P610_DIRS[@]}"; do
-    # Check if this is a system directory
-    for SDIR in $SYSTEM_DIRS; do
-        if [ "$PDIR610" = "$SDIR" ]; then
-            FOUND_SYSTEM=true
-            break
-        fi
-    done
-    # If we haven't hit a system dir yet and this dir is writable by non-owners
-    if [ "$FOUND_SYSTEM" = false ] && [ -d "$PDIR610" ]; then
-        DIR_PERMS=$(stat -f "%Lp" "$PDIR610" 2>/dev/null || stat -c "%a" "$PDIR610" 2>/dev/null || echo "")
-        if [ -n "$DIR_PERMS" ]; then
-            # World-writable or group-writable directory before system paths
-            case "$DIR_PERMS" in
-                *7|*6|*3|*2)
-                    result_warn "Writable dir '$PDIR610' precedes system dirs in PATH (CVE-2026-29610 hijack vector)"
-                    PATH610_ISSUES=$((PATH610_ISSUES + 1))
-                    ;;
-            esac
-        fi
-    fi
-done
-
-if [ "$PATH610_ISSUES" -eq 0 ]; then
-    result_clean "PATH command hijacking risk acceptable"
-fi
-
-# ============================================================
-# CHECK 51: SHA-1 Cache Poisoning (CVE-2026-28479, CVSS 8.7)
-# ============================================================
-header 51 "Checking SHA-1 sandbox cache poisoning (CVE-2026-28479)..."
+header 33 "Checking SHA-1 sandbox cache poisoning (CVE-2026-28479)..."
 
 SHA1_ISSUES=0
-# CVE-2026-28479 (CVSS 8.7): OpenClaw uses SHA-1 to generate sandbox identifier
-# cache keys. SHA-1 collision attacks can cause one sandbox's cached state to
-# be served to a different sandbox, potentially leaking secrets or bypassing
-# isolation. Fixed in v2026.2.15.
-
-if command -v openclaw &>/dev/null && [ -n "$OC_VERSION" ] && [ "$OC_VERSION" != "unknown" ]; then
-    SHA1_MAJOR=$(echo "$OC_VERSION" | cut -d'.' -f1)
-    SHA1_MINOR=$(echo "$OC_VERSION" | cut -d'.' -f2)
-    SHA1_PATCH=$(echo "$OC_VERSION" | cut -d'.' -f3 | cut -d'-' -f1)
-    SHA1_VULN=false
-    if [ "$SHA1_MAJOR" -eq 2026 ] 2>/dev/null; then
-        if [ "$SHA1_MINOR" -lt 2 ] 2>/dev/null; then
-            SHA1_VULN=true
-        elif [ "$SHA1_MINOR" -eq 2 ] && [ "$SHA1_PATCH" -lt 15 ] 2>/dev/null; then
-            SHA1_VULN=true
-        fi
-    fi
-    if [ "$SHA1_VULN" = true ]; then
-        result_critical "OpenClaw v$OC_VERSION uses SHA-1 for sandbox cache keys (CVE-2026-28479, CVSS 8.7). Update to v2026.2.15+"
+if command -v openclaw &>/dev/null && [ -n "${OC_VERSION:-}" ] && [ "${OC_VERSION:-}" != "unknown" ]; then
+    if version_advisory "2026.2.15" "SHA-1 used for sandbox cache keys (CVE-2026-28479, CVSS 8.7)"; then
         SHA1_ISSUES=$((SHA1_ISSUES + 1))
     fi
-fi
 
-# Check if sandbox caching is enabled (increases exposure if vulnerable)
-if command -v openclaw &>/dev/null; then
     SANDBOX_CACHE=$(run_with_timeout 5 openclaw config get "sandbox.cache.enabled" 2>/dev/null || echo "")
     if [ "$SANDBOX_CACHE" = "true" ] && [ "$SHA1_ISSUES" -gt 0 ]; then
         log "  Sandbox caching is enabled — SHA-1 collision attack surface is active"
@@ -1732,36 +1475,17 @@ if [ "$SHA1_ISSUES" -eq 0 ]; then
 fi
 
 # ============================================================
-# CHECK 52: Google Chat Webhook Cross-Account Bypass (CVE-2026-28469, CVSS 9.8)
+# CHECK 34: Google Chat Webhook Cross-Account Bypass
+# (was old check 52)
 # ============================================================
-header 52 "Checking Google Chat webhook authorization (CVE-2026-28469)..."
+header 34 "Checking Google Chat webhook authorization (CVE-2026-28469)..."
 
 GCW_ISSUES=0
-# CVE-2026-28469 (CVSS 9.8, Critical): Google Chat webhook handler uses first-match
-# semantics when multiple webhook targets share the same HTTP path. A cross-account
-# attacker can register a matching path to intercept or inject messages.
-# Fixed in v2026.2.14.
-
-if command -v openclaw &>/dev/null && [ -n "$OC_VERSION" ] && [ "$OC_VERSION" != "unknown" ]; then
-    GCW_MAJOR=$(echo "$OC_VERSION" | cut -d'.' -f1)
-    GCW_MINOR=$(echo "$OC_VERSION" | cut -d'.' -f2)
-    GCW_PATCH=$(echo "$OC_VERSION" | cut -d'.' -f3 | cut -d'-' -f1)
-    GCW_VULN=false
-    if [ "$GCW_MAJOR" -eq 2026 ] 2>/dev/null; then
-        if [ "$GCW_MINOR" -lt 2 ] 2>/dev/null; then
-            GCW_VULN=true
-        elif [ "$GCW_MINOR" -eq 2 ] && [ "$GCW_PATCH" -lt 14 ] 2>/dev/null; then
-            GCW_VULN=true
-        fi
-    fi
-    if [ "$GCW_VULN" = true ]; then
-        result_critical "Google Chat webhook cross-account bypass (CVE-2026-28469, CVSS 9.8). Update to v2026.2.14+"
+if command -v openclaw &>/dev/null && [ -n "${OC_VERSION:-}" ] && [ "${OC_VERSION:-}" != "unknown" ]; then
+    if version_advisory "2026.2.14" "Google Chat webhook cross-account bypass (CVE-2026-28469, CVSS 9.8)"; then
         GCW_ISSUES=$((GCW_ISSUES + 1))
     fi
-fi
 
-# Check if Google Chat integration is configured
-if command -v openclaw &>/dev/null; then
     GCHAT_ENABLED=$(run_with_timeout 5 openclaw config get "integrations.googlechat.enabled" 2>/dev/null || echo "")
     if [ "$GCHAT_ENABLED" = "true" ] && [ "$GCW_ISSUES" -gt 0 ]; then
         log "  Google Chat integration is active — CVE-2026-28469 attack surface is live"
@@ -1773,205 +1497,14 @@ if [ "$GCW_ISSUES" -eq 0 ]; then
 fi
 
 # ============================================================
-# CHECK 53: Gateway WebSocket Device Identity Skip (CVE-2026-28472)
+# CHECK 35: SANDWORM Worm Detection
+# (was old check 58)
 # ============================================================
-header 53 "Checking gateway WebSocket device identity (CVE-2026-28472)..."
-
-WSDI_ISSUES=0
-# CVE-2026-28472: Gateway WebSocket connect handshake skips device identity checks,
-# granting operator access without device verification. Allows unauthorized
-# WebSocket connections to escalate to operator-level sessions. Fixed in v2026.3.11.
-
-if command -v openclaw &>/dev/null && [ -n "$OC_VERSION" ] && [ "$OC_VERSION" != "unknown" ]; then
-    WSDI_MAJOR=$(echo "$OC_VERSION" | cut -d'.' -f1)
-    WSDI_MINOR=$(echo "$OC_VERSION" | cut -d'.' -f2)
-    WSDI_PATCH=$(echo "$OC_VERSION" | cut -d'.' -f3 | cut -d'-' -f1)
-    WSDI_VULN=false
-    if [ "$WSDI_MAJOR" -eq 2026 ] 2>/dev/null; then
-        if [ "$WSDI_MINOR" -lt 3 ] 2>/dev/null; then
-            WSDI_VULN=true
-        elif [ "$WSDI_MINOR" -eq 3 ] && [ "$WSDI_PATCH" -lt 11 ] 2>/dev/null; then
-            WSDI_VULN=true
-        fi
-    fi
-    if [ "$WSDI_VULN" = true ]; then
-        result_critical "Gateway WebSocket skips device identity check (CVE-2026-28472). Update to v2026.3.11+"
-        WSDI_ISSUES=$((WSDI_ISSUES + 1))
-    fi
-fi
-
-if [ "$WSDI_ISSUES" -eq 0 ]; then
-    result_clean "Gateway WebSocket device identity acceptable"
-fi
-
-# ============================================================
-# CHECK 54: Cross-Site WebSocket Hijacking in Trusted-Proxy (CVE-2026-32302)
-# ============================================================
-header 54 "Checking Cross-Site WebSocket Hijacking (CVE-2026-32302)..."
-
-CSWSH_ISSUES=0
-# CVE-2026-32302: Origin validation bypass in trusted-proxy mode allows attacker-origin
-# pages to establish privileged operator sessions via WebSocket. Fixed in v2026.3.11.
-
-if command -v openclaw &>/dev/null && [ -n "$OC_VERSION" ] && [ "$OC_VERSION" != "unknown" ]; then
-    CSW_MAJOR=$(echo "$OC_VERSION" | cut -d'.' -f1)
-    CSW_MINOR=$(echo "$OC_VERSION" | cut -d'.' -f2)
-    CSW_PATCH=$(echo "$OC_VERSION" | cut -d'.' -f3 | cut -d'-' -f1)
-    CSW_VULN=false
-    if [ "$CSW_MAJOR" -eq 2026 ] 2>/dev/null; then
-        if [ "$CSW_MINOR" -lt 3 ] 2>/dev/null; then
-            CSW_VULN=true
-        elif [ "$CSW_MINOR" -eq 3 ] && [ "$CSW_PATCH" -lt 11 ] 2>/dev/null; then
-            CSW_VULN=true
-        fi
-    fi
-    if [ "$CSW_VULN" = true ]; then
-        result_critical "Cross-Site WebSocket Hijacking via Origin bypass (CVE-2026-32302). Update to v2026.3.11+"
-        CSWSH_ISSUES=$((CSWSH_ISSUES + 1))
-    fi
-fi
-
-# Extra risk if trusted-proxy mode is active
-if command -v openclaw &>/dev/null; then
-    TRUSTED_PROXY_MODE=$(run_with_timeout 5 openclaw config get "gateway.trustedProxy" 2>/dev/null || echo "")
-    if [ "$TRUSTED_PROXY_MODE" = "true" ] && [ "$CSWSH_ISSUES" -gt 0 ]; then
-        log "  Trusted-proxy mode is ACTIVE — CVE-2026-32302 exploitation is trivial"
-    elif [ "$TRUSTED_PROXY_MODE" = "true" ]; then
-        log "  INFO: Trusted-proxy mode enabled; verify v2026.3.11+ for CVE-2026-32302 fix"
-    fi
-fi
-
-if [ "$CSWSH_ISSUES" -eq 0 ]; then
-    result_clean "Cross-Site WebSocket Hijacking protection acceptable"
-fi
-
-# ============================================================
-# CHECK 55: Device Pairing Credential Exposure (GHSA-7h7g-x2px-94hj)
-# ============================================================
-header 55 "Checking device pairing credential exposure (GHSA-7h7g)..."
-
-DPCE_ISSUES=0
-# GHSA-7h7g-x2px-94hj: Device pairing setup codes expose long-lived gateway
-# credentials instead of short-lived bootstrap tokens. Compromised setup codes
-# grant persistent access. Fixed in v2026.3.12.
-
-if command -v openclaw &>/dev/null && [ -n "$OC_VERSION" ] && [ "$OC_VERSION" != "unknown" ]; then
-    DP_MAJOR=$(echo "$OC_VERSION" | cut -d'.' -f1)
-    DP_MINOR=$(echo "$OC_VERSION" | cut -d'.' -f2)
-    DP_PATCH=$(echo "$OC_VERSION" | cut -d'.' -f3 | cut -d'-' -f1)
-    DP_VULN=false
-    if [ "$DP_MAJOR" -eq 2026 ] 2>/dev/null; then
-        if [ "$DP_MINOR" -lt 3 ] 2>/dev/null; then
-            DP_VULN=true
-        elif [ "$DP_MINOR" -eq 3 ] && [ "$DP_PATCH" -lt 12 ] 2>/dev/null; then
-            DP_VULN=true
-        fi
-    fi
-    if [ "$DP_VULN" = true ]; then
-        result_warn "Device pairing exposes long-lived credentials (GHSA-7h7g). Update to v2026.3.12+"
-        DPCE_ISSUES=$((DPCE_ISSUES + 1))
-    fi
-fi
-
-# Check if pairing has been used (device.json exists)
-DEVICE_JSON="$OPENCLAW_DIR/device.json"
-if [ -f "$DEVICE_JSON" ] && [ "$DPCE_ISSUES" -gt 0 ]; then
-    log "  device.json exists — rotate credentials after upgrading"
-fi
-
-if [ "$DPCE_ISSUES" -eq 0 ]; then
-    result_clean "Device pairing credential handling acceptable"
-fi
-
-# ============================================================
-# CHECK 56: Operator Privilege Escalation (GHSA-vmhq-cqm9-6p7q)
-# ============================================================
-header 56 "Checking operator privilege escalation (GHSA-vmhq)..."
-
-OPE_ISSUES=0
-# GHSA-vmhq-cqm9-6p7q (High): Accounts with operator.write permissions can access
-# admin-only endpoints to create/delete browser profiles, escalating privileges.
-# Fixed in v2026.3.12.
-
-if command -v openclaw &>/dev/null && [ -n "$OC_VERSION" ] && [ "$OC_VERSION" != "unknown" ]; then
-    OP_MAJOR=$(echo "$OC_VERSION" | cut -d'.' -f1)
-    OP_MINOR=$(echo "$OC_VERSION" | cut -d'.' -f2)
-    OP_PATCH=$(echo "$OC_VERSION" | cut -d'.' -f3 | cut -d'-' -f1)
-    OP_VULN=false
-    if [ "$OP_MAJOR" -eq 2026 ] 2>/dev/null; then
-        if [ "$OP_MINOR" -lt 3 ] 2>/dev/null; then
-            OP_VULN=true
-        elif [ "$OP_MINOR" -eq 3 ] && [ "$OP_PATCH" -lt 12 ] 2>/dev/null; then
-            OP_VULN=true
-        fi
-    fi
-    if [ "$OP_VULN" = true ]; then
-        result_warn "Operator accounts can escalate to admin (GHSA-vmhq). Update to v2026.3.12+"
-        OPE_ISSUES=$((OPE_ISSUES + 1))
-    fi
-fi
-
-if [ "$OPE_ISSUES" -eq 0 ]; then
-    result_clean "Operator privilege boundaries acceptable"
-fi
-
-# ============================================================
-# CHECK 57: MCP Server Tool Poisoning via Schema Injection
-# ============================================================
-header 57 "Checking MCP server configs for tool poisoning..."
-
-MCP_POISON_ISSUES=0
-# OWASP MCP03 / MCP06: Malicious MCP servers can embed prompt injection in tool
-# descriptions, parameter names, default values, and required-field arrays. Also
-# checks for "rug pull" patterns (postmark-mcp style BCC exfiltration).
-
-MCP_CONFIG_DIRS=(
-    "$OPENCLAW_DIR/mcp-servers"
-    "$HOME/.config/openclaw/mcp"
-    "$HOME/.claude/mcp"
-)
-
-for MCP_DIR in "${MCP_CONFIG_DIRS[@]}"; do
-    if [ -d "$MCP_DIR" ]; then
-        while IFS= read -r mcpfile; do
-            [ -z "$mcpfile" ] && continue
-            # Check for hidden Unicode characters used for prompt injection
-            if grep -Pq '[\x{200B}\x{200C}\x{200D}\x{2060}\x{FEFF}\x{00AD}]' "$mcpfile" 2>/dev/null; then
-                result_critical "Hidden Unicode in MCP config: $mcpfile (tool poisoning/prompt injection)"
-                MCP_POISON_ISSUES=$((MCP_POISON_ISSUES + 1))
-            fi
-            # Check for BCC/forwarding injection patterns (rug pull)
-            if grep -iE '(bcc|forward_to|redirect|exfiltrate|steal|siphon)' "$mcpfile" 2>/dev/null | grep -vq '^#'; then
-                result_warn "Suspicious BCC/forwarding pattern in MCP config: $mcpfile"
-                MCP_POISON_ISSUES=$((MCP_POISON_ISSUES + 1))
-            fi
-            # Check for prompt injection in tool descriptions
-            if grep -iE '(ignore previous|disregard|you are now|act as|system prompt|<\|im_sep\|>|<\|endoftext\|>)' "$mcpfile" 2>/dev/null | grep -vq '^#'; then
-                result_critical "Prompt injection detected in MCP config: $mcpfile"
-                MCP_POISON_ISSUES=$((MCP_POISON_ISSUES + 1))
-            fi
-        done < <(find "$MCP_DIR" -type f \( -name "*.json" -o -name "*.yaml" -o -name "*.yml" -o -name "*.toml" \) 2>/dev/null)
-    fi
-done
-
-if [ "$MCP_POISON_ISSUES" -eq 0 ]; then
-    result_clean "MCP server configs clean of tool poisoning patterns"
-fi
-
-# ============================================================
-# CHECK 58: SANDWORM_MODE MCP Worm Detection
-# ============================================================
-header 58 "Checking for SANDWORM_MODE MCP worm artifacts..."
+header 35 "Checking for SANDWORM_MODE MCP worm artifacts..."
 
 SANDWORM_ISSUES=0
-# Socket (Feb 20, 2026): 19 typosquatted npm packages carry worm-like malware that
-# injects rogue MCP servers into AI tool configs (Claude Code, Cursor, VS Code Continue,
-# Windsurf). The worm harvests SSH keys, AWS creds, and LLM API keys, then self-propagates.
-# 48-hour delayed activation with per-machine jitter.
-
 SANDWORM_PKGS="@anthropic/sdk-extra|@anthropic/cli-tools|claude-code-utils|claude-mcp-helper|claudecode-ext|claude-dev-tools|cursor-mcp-bridge|cursor-tools-ext|mcp-server-utils|mcp-tool-runner|mcp-proxy-server|windsurf-mcp-bridge|continue-mcp-ext|vscode-ai-helper|ai-code-review|copilot-mcp-bridge|openai-mcp-tools|llm-gateway-utils|agent-tool-sdk"
 
-# Check for rogue MCP entries injected by the worm
 WORM_CONFIG_FILES=(
     "$HOME/.claude.json"
     "$HOME/.claude/config.json"
@@ -1983,14 +1516,12 @@ WORM_CONFIG_FILES=(
 
 for WCONF in "${WORM_CONFIG_FILES[@]}"; do
     if [ -f "$WCONF" ]; then
-        # Check for known SANDWORM_MODE package names
         for SPKG in $(echo "$SANDWORM_PKGS" | tr '|' ' '); do
             if grep -q "$SPKG" "$WCONF" 2>/dev/null; then
                 result_critical "SANDWORM_MODE worm artifact: '$SPKG' found in $WCONF"
                 SANDWORM_ISSUES=$((SANDWORM_ISSUES + 1))
             fi
         done
-        # Check for suspicious MCP server entries with exfiltration patterns
         if grep -iE '(ssh_key|aws_secret|npm_token|anthropic_api_key|openai_api_key|GROQ_API_KEY)' "$WCONF" 2>/dev/null | grep -vq '^#'; then
             result_critical "Credential harvesting pattern in MCP config: $WCONF"
             SANDWORM_ISSUES=$((SANDWORM_ISSUES + 1))
@@ -1998,7 +1529,6 @@ for WCONF in "${WORM_CONFIG_FILES[@]}"; do
     fi
 done
 
-# Check if any SANDWORM_MODE npm packages are installed locally
 if command -v npm &>/dev/null; then
     NPM_LIST=$(npm list -g --depth=0 2>/dev/null || true)
     for SPKG in $(echo "$SANDWORM_PKGS" | tr '|' ' '); do
@@ -2014,53 +1544,248 @@ if [ "$SANDWORM_ISSUES" -eq 0 ]; then
 fi
 
 # ============================================================
-# CHECK 59: Rules File Backdoor / Hidden Unicode Injection
+# CHECK 36: Workspace Plugin Auto-Discovery
+# (was old check 60)
 # ============================================================
-header 59 "Checking for rules file backdoor / hidden Unicode injection..."
+header 36 "Checking for workspace plugin auto-discovery risks..."
 
-RULES_ISSUES=0
-# Pillar Security: Hidden Unicode characters in AI agent rules files
-# (.cursorrules, .github/copilot-instructions.md, CLAUDE.md, .clawrules)
-# inject invisible malicious instructions that cause the AI to silently
-# insert backdoors, skip security checks, or exfiltrate data.
-
-RULES_FILES=(
-    ".cursorrules"
-    ".cursor/rules"
-    ".github/copilot-instructions.md"
-    "CLAUDE.md"
-    ".claude/settings.json"
-    ".clawrules"
-    ".openclaw/rules.md"
-    "SOUL.md"
+WPA_ISSUES=0
+WORKSPACE_PLUGIN_ROOTS=(
+    "$WORKSPACE_DIR"
+    "$(pwd)"
 )
 
-# Scan current working directory and home directory
-SCAN_ROOTS=("$(pwd)" "$HOME")
-for SROOT in "${SCAN_ROOTS[@]}"; do
-    for RFILE in "${RULES_FILES[@]}"; do
-        TARGET="$SROOT/$RFILE"
-        if [ -f "$TARGET" ]; then
-            # Check for zero-width and invisible Unicode characters
-            if grep -Pq '[\x{200B}\x{200C}\x{200D}\x{2060}\x{FEFF}\x{00AD}\x{2028}\x{2029}\x{202A}-\x{202E}\x{2066}-\x{2069}]' "$TARGET" 2>/dev/null; then
-                result_critical "Hidden Unicode injection in rules file: $TARGET (Pillar Security attack)"
-                RULES_ISSUES=$((RULES_ISSUES + 1))
-            fi
-            # Check for base64-encoded instruction blocks (obfuscated injection)
-            if grep -qE '[A-Za-z0-9+/]{40,}={0,2}' "$TARGET" 2>/dev/null; then
-                # Verify it's not just a hash or normal base64 content
-                B64_LINES=$(grep -cE '[A-Za-z0-9+/]{100,}={0,2}' "$TARGET" 2>/dev/null || echo "0")
-                if [ "$B64_LINES" -gt 2 ]; then
-                    result_warn "Large base64 blocks in rules file: $TARGET (potential obfuscated injection)"
-                    RULES_ISSUES=$((RULES_ISSUES + 1))
-                fi
-            fi
+WPA_SEEN=""
+for WROOT in "${WORKSPACE_PLUGIN_ROOTS[@]}"; do
+    [ -d "$WROOT" ] || continue
+    while IFS= read -r extdir; do
+        [ -z "$extdir" ] && continue
+        case "$WPA_SEEN" in
+            *"|$extdir|"*) continue ;;
+        esac
+        WPA_SEEN="${WPA_SEEN}|$extdir|"
+        if [[ "$extdir" == *"/$SELF_DIR_NAME/"* ]]; then
+            continue
         fi
-    done
+        result_critical "Workspace plugin auto-discovery candidate found: $extdir"
+        WPA_ISSUES=$((WPA_ISSUES + 1))
+    done < <(find "$WROOT" -maxdepth 5 -type d -path "*/.openclaw/extensions" 2>/dev/null)
 done
 
-if [ "$RULES_ISSUES" -eq 0 ]; then
-    result_clean "Rules files clean of hidden Unicode injection"
+if command -v openclaw &>/dev/null; then
+    PLUGIN_DISCOVERY=$(run_with_timeout 10 openclaw config get "plugins.workspaceDiscovery" 2>/dev/null || echo "")
+    if [ "$PLUGIN_DISCOVERY" = "true" ] || [ "$PLUGIN_DISCOVERY" = "on" ] || [ "$PLUGIN_DISCOVERY" = "auto" ]; then
+        result_warn "Workspace plugin discovery is enabled ($PLUGIN_DISCOVERY)"
+        WPA_ISSUES=$((WPA_ISSUES + 1))
+    fi
+fi
+
+if version_lt "${OC_VERSION:-unknown}" "2026.3.13" && [ "$WPA_ISSUES" -gt 0 ]; then
+    log "  Advisory coverage: GHSA-99qw-6mr3-36qr (workspace plugin auto-discovery)"
+fi
+
+if [ "$WPA_ISSUES" -eq 0 ]; then
+    result_clean "No workspace plugin auto-discovery risks detected"
+fi
+
+# ============================================================
+# CHECK 37: Symlink Traversal
+# (NEW - CVE-2026-32013, CVE-2026-32055)
+# ============================================================
+header 37 "Checking symlink traversal protections (CVE-2026-32013, CVE-2026-32055)..."
+
+SYMLINK37_ISSUES=0
+
+# CVE-2026-32013: agents.files.get/set follows symlinks to read/write outside workspace root
+# CVE-2026-32055: In-workspace symlinks created by agents escape sandbox boundaries
+# Both fixed in v2026.3.21
+if command -v openclaw &>/dev/null && [ -n "${OC_VERSION:-}" ] && [ "${OC_VERSION:-}" != "unknown" ]; then
+    if version_advisory "2026.3.21" "agents.files.get/set symlink escape (CVE-2026-32013) and in-workspace symlink traversal (CVE-2026-32055)"; then
+        SYMLINK37_ISSUES=$((SYMLINK37_ISSUES + 1))
+    fi
+fi
+
+# Scan workspace for suspicious symlinks pointing outside workspace root
+if [ -d "$WORKSPACE_DIR" ]; then
+    SUSPICIOUS_SYMLINKS=""
+    while IFS= read -r symlink; do
+        [ -z "$symlink" ] && continue
+        LINK_TARGET=$(readlink -f "$symlink" 2>/dev/null || readlink "$symlink" 2>/dev/null || echo "")
+        if [ -n "$LINK_TARGET" ]; then
+            case "$LINK_TARGET" in
+                "$WORKSPACE_DIR"*) ;; # within workspace, OK
+                *)
+                    SUSPICIOUS_SYMLINKS="$SUSPICIOUS_SYMLINKS\n  $symlink -> $LINK_TARGET"
+                    ;;
+            esac
+        fi
+    done < <(find "$WORKSPACE_DIR" -type l -maxdepth 5 2>/dev/null | head -20)
+
+    if [ -n "$SUSPICIOUS_SYMLINKS" ]; then
+        result_warn "Symlinks pointing outside workspace root:$SUSPICIOUS_SYMLINKS"
+        SYMLINK37_ISSUES=$((SYMLINK37_ISSUES + 1))
+    fi
+fi
+
+if [ "$SYMLINK37_ISSUES" -eq 0 ]; then
+    result_clean "Symlink traversal protections acceptable"
+fi
+
+# ============================================================
+# CHECK 38: Sandbox Escape & Session Inheritance
+# (NEW - CVE-2026-32048, CVE-2026-32051)
+# ============================================================
+header 38 "Checking sandbox escape and session inheritance (CVE-2026-32048, CVE-2026-32051)..."
+
+ESCAPE38_ISSUES=0
+
+# CVE-2026-32048: sessions_spawn bypass allows sandbox escape via session inheritance
+# CVE-2026-32051: operator.write auth scope mismatch allows cross-session writes
+# Both fixed in v2026.3.21
+if command -v openclaw &>/dev/null && [ -n "${OC_VERSION:-}" ] && [ "${OC_VERSION:-}" != "unknown" ]; then
+    if version_advisory "2026.3.21" "sessions_spawn sandbox escape (CVE-2026-32048) and operator.write auth mismatch (CVE-2026-32051)"; then
+        ESCAPE38_ISSUES=$((ESCAPE38_ISSUES + 1))
+    fi
+
+    # Check if session spawning is enabled
+    SESSION_SPAWN=$(run_with_timeout 5 openclaw config get "sessions.spawn.enabled" 2>/dev/null || echo "")
+    if [ "$SESSION_SPAWN" = "true" ] && [ "$ESCAPE38_ISSUES" -gt 0 ]; then
+        log "  Session spawning is enabled — sandbox escape attack surface is active"
+    fi
+
+    # Check operator.write scope
+    OP_WRITE=$(run_with_timeout 5 openclaw config get "permissions.operator.write" 2>/dev/null || echo "")
+    if [ -n "$OP_WRITE" ] && [ "$OP_WRITE" != "false" ] && [ "$ESCAPE38_ISSUES" -gt 0 ]; then
+        log "  operator.write scope is configured — cross-session write risk elevated"
+    fi
+fi
+
+if [ "$ESCAPE38_ISSUES" -eq 0 ]; then
+    result_clean "Sandbox escape and session inheritance checks passed"
+fi
+
+# ============================================================
+# CHECK 39: Shell Environment RCE
+# (NEW - CVE-2026-32056, CVE-2026-27566)
+# ============================================================
+header 39 "Checking shell environment RCE vectors (CVE-2026-32056, CVE-2026-27566)..."
+
+SHELLRCE39_ISSUES=0
+
+# CVE-2026-32056: HOME/ZDOTDIR injection in system.run allows .zshrc/.bashrc execution in agent context
+# CVE-2026-27566: env/wrapper binary unwrapping in PATH allows arbitrary code execution before sandboxing
+# Both fixed in v2026.3.21
+if command -v openclaw &>/dev/null && [ -n "${OC_VERSION:-}" ] && [ "${OC_VERSION:-}" != "unknown" ]; then
+    if version_advisory "2026.3.21" "HOME/ZDOTDIR injection in system.run (CVE-2026-32056) and env/wrapper binary unwrapping (CVE-2026-27566)"; then
+        SHELLRCE39_ISSUES=$((SHELLRCE39_ISSUES + 1))
+    fi
+fi
+
+# Check for suspicious ZDOTDIR overrides
+if [ -n "${ZDOTDIR:-}" ] && [ "$ZDOTDIR" != "$HOME" ]; then
+    result_warn "ZDOTDIR is set to '$ZDOTDIR' (non-default — potential CVE-2026-32056 vector)"
+    SHELLRCE39_ISSUES=$((SHELLRCE39_ISSUES + 1))
+fi
+
+# Check for wrapper/shim binaries that could be unwrapped unsafely
+for WBIN in env bash zsh; do
+    WBIN_PATH=$(command -v "$WBIN" 2>/dev/null || true)
+    if [ -n "$WBIN_PATH" ] && [ -L "$WBIN_PATH" ]; then
+        REAL_BIN=$(readlink -f "$WBIN_PATH" 2>/dev/null || readlink "$WBIN_PATH" 2>/dev/null || echo "")
+        if [ -n "$REAL_BIN" ] && [[ "$REAL_BIN" != /usr/* ]] && [[ "$REAL_BIN" != /bin/* ]] && [[ "$REAL_BIN" != /opt/homebrew/* ]]; then
+            result_warn "'$WBIN' resolves to non-system path: $REAL_BIN (CVE-2026-27566 vector)"
+            SHELLRCE39_ISSUES=$((SHELLRCE39_ISSUES + 1))
+        fi
+    fi
+done
+
+if [ "$SHELLRCE39_ISSUES" -eq 0 ]; then
+    result_clean "Shell environment RCE vectors acceptable"
+fi
+
+# ============================================================
+# CHECK 40: VNC & Observer Authentication
+# (NEW - CVE-2026-32064)
+# ============================================================
+header 40 "Checking VNC and observer authentication (CVE-2026-32064)..."
+
+VNC40_ISSUES=0
+
+# CVE-2026-32064: Missing authentication on noVNC sandbox observer sessions allows
+# unauthenticated screen viewing and interaction with sandboxed agent sessions
+# Fixed in v2026.3.21
+if command -v openclaw &>/dev/null && [ -n "${OC_VERSION:-}" ] && [ "${OC_VERSION:-}" != "unknown" ]; then
+    if version_advisory "2026.3.21" "missing VNC auth for noVNC sandbox observer sessions (CVE-2026-32064)"; then
+        VNC40_ISSUES=$((VNC40_ISSUES + 1))
+    fi
+fi
+
+# Check if noVNC/VNC ports are listening
+for VNC_PORT in 5900 5901 6080 6081; do
+    if command -v lsof &>/dev/null; then
+        VNC_LISTEN=$(lsof -iTCP:$VNC_PORT -sTCP:LISTEN -nP 2>/dev/null | grep -v COMMAND)
+        if [ -n "$VNC_LISTEN" ]; then
+            log "  VNC/noVNC service listening on port $VNC_PORT"
+            if [ "$VNC40_ISSUES" -gt 0 ]; then
+                log "  Active VNC listener with unauthenticated observer vulnerability"
+            fi
+        fi
+    fi
+done
+
+# Check observer config
+if command -v openclaw &>/dev/null; then
+    OBSERVER_MODE=$(run_with_timeout 5 openclaw config get "sandbox.observer.enabled" 2>/dev/null || echo "")
+    if [ "$OBSERVER_MODE" = "true" ] && [ "$VNC40_ISSUES" -gt 0 ]; then
+        log "  Sandbox observer mode is enabled — CVE-2026-32064 attack surface is active"
+    fi
+fi
+
+if [ "$VNC40_ISSUES" -eq 0 ]; then
+    result_clean "VNC and observer authentication acceptable"
+fi
+
+# ============================================================
+# CHECK 41: Device Identity & Metadata Spoofing
+# (NEW - CVE-2026-32014, CVE-2026-32042, CVE-2026-32025)
+# ============================================================
+header 41 "Checking device identity and metadata spoofing (CVE-2026-32014, CVE-2026-32042, CVE-2026-32025)..."
+
+DEVID41_ISSUES=0
+
+# CVE-2026-32014: Reconnect field spoofing allows session hijacking via forged device metadata
+# CVE-2026-32042: Unpaired devices can self-assign admin role during initial connection
+# CVE-2026-32025: Origin bypass combined with brute-force enables unauthorized device registration
+# All fixed in v2026.3.21
+if command -v openclaw &>/dev/null && [ -n "${OC_VERSION:-}" ] && [ "${OC_VERSION:-}" != "unknown" ]; then
+    if version_advisory "2026.3.21" "reconnect field spoofing (CVE-2026-32014), unpaired device admin self-assign (CVE-2026-32042), origin bypass brute-force (CVE-2026-32025)"; then
+        DEVID41_ISSUES=$((DEVID41_ISSUES + 1))
+    fi
+fi
+
+# Check for stale/unexpected device registrations
+DEVICE_DIR="$OPENCLAW_DIR/devices"
+if [ -d "$DEVICE_DIR" ]; then
+    DEVICE_COUNT=$(find "$DEVICE_DIR" -type f -name "*.json" 2>/dev/null | wc -l | tr -d ' ')
+    if [ "$DEVICE_COUNT" -gt 10 ]; then
+        result_warn "Unusually high number of registered devices ($DEVICE_COUNT) — review for unauthorized registrations"
+        DEVID41_ISSUES=$((DEVID41_ISSUES + 1))
+    elif [ "$DEVICE_COUNT" -gt 0 ]; then
+        log "  Registered devices: $DEVICE_COUNT"
+    fi
+fi
+
+# Check if auto-pairing is enabled (increases exposure to CVE-2026-32042)
+if command -v openclaw &>/dev/null; then
+    AUTO_PAIR=$(run_with_timeout 5 openclaw config get "pairing.autoAccept" 2>/dev/null || echo "")
+    if [ "$AUTO_PAIR" = "true" ]; then
+        result_warn "Auto-pairing is enabled (pairing.autoAccept=true) — increases CVE-2026-32042 exposure"
+        DEVID41_ISSUES=$((DEVID41_ISSUES + 1))
+    fi
+fi
+
+if [ "$DEVID41_ISSUES" -eq 0 ]; then
+    result_clean "Device identity and metadata spoofing checks passed"
 fi
 
 # ============================================================

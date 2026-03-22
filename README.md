@@ -1,6 +1,6 @@
 # OpenClaw Security Monitor
 
-Proactive security monitoring, threat scanning, and real-time visibility for [OpenClaw](https://github.com/openclawai/openclaw) deployments. Detects threats from the **ClawHavoc** campaign (824+ malicious skills), **AMOS stealer**, **Vidar infostealer**, **GhostSocks** proxy malware, **ClawJacked** WebSocket brute-force, supply chain attacks, memory poisoning, log poisoning, browser relay hijacking, TAR traversal, SSRF, SHA-1 cache poisoning, MCP tool poisoning, SANDWORM worm propagation, **35+ CVEs**, and **40+ GHSAs**.
+Proactive security monitoring, threat scanning, and real-time visibility for [OpenClaw](https://github.com/openclawai/openclaw) deployments. Detects threats from the **ClawHavoc** campaign (824+ malicious skills), **AMOS stealer**, **Vidar infostealer**, **GhostSocks** proxy malware, **ClawJacked** WebSocket brute-force, workspace plugin auto-loading attacks, shared-auth scope escalation, approval replay/integrity bypasses, supply chain attacks, memory poisoning, log poisoning, browser relay hijacking, TAR traversal, SSRF, SHA-1 cache poisoning, MCP tool poisoning, SANDWORM worm propagation, **60+ CVEs**, and **60+ GHSAs**.
 
 ## Why This Exists
 
@@ -8,15 +8,15 @@ In late January 2026, security researchers found that **12% of all ClawHub skill
 
 The primary campaign, ClawHavoc, delivered the Atomic Stealer (AMOS) macOS infostealer targeting crypto wallets, SSH credentials, and browser passwords. In February, Hudson Rock discovered **Vidar infostealer variants specifically targeting OpenClaw agent identities** — stealing openclaw.json, device.json, soul.md, and memory.md files.
 
-Meanwhile, CVE-2026-25253 demonstrated that a single malicious link could achieve full remote code execution on any OpenClaw instance through WebSocket hijacking — even those bound to localhost. The **ClawJacked** attack (Feb 26, Oasis Security) showed that malicious websites can brute-force localhost WebSocket passwords with no rate limiting. **CVE-2026-28363** (CVSS 9.9) revealed a critical safeBins bypass via GNU long-option abbreviations. In total, **13+ CVEs and 20+ GHSAs** have been disclosed including SSRF, exec bypass, ACP auto-approval bypass, webhook forgery, log poisoning, and more.
+Meanwhile, CVE-2026-25253 demonstrated that a single malicious link could achieve full remote code execution on any OpenClaw instance through WebSocket hijacking — even those bound to localhost. The **ClawJacked** attack (Feb 26, Oasis Security) showed that malicious websites can brute-force localhost WebSocket passwords with no rate limiting. **CVE-2026-28363** (CVSS 9.9) revealed a critical safeBins bypass via GNU long-option abbreviations. In total, **60+ CVEs and 60+ GHSAs** have been disclosed including SSRF, exec bypass, ACP auto-approval bypass, webhook forgery, log poisoning, and more. The March 19-21 batch (CVE-2026-32013, CVE-2026-32014, CVE-2026-32025, CVE-2026-32042, CVE-2026-32048, CVE-2026-32051, CVE-2026-32055, CVE-2026-32056, CVE-2026-32064) added symlink traversal, sandbox escape, shell environment RCE, unauthenticated VNC observer access, and device identity/metadata spoofing.
 
 **135,000+ instances** are exposed across 82 countries, with **12,812 exploitable via RCE**. Major security firms including CrowdStrike, Bitdefender, Palo Alto Networks, Cisco, and Kaspersky have issued advisories. Meta has banned OpenClaw from corporate devices.
 
-This project provides defense-in-depth monitoring for self-hosted OpenClaw installations. **Minimum safe version: v2026.2.26**.
+This project provides defense-in-depth monitoring for self-hosted OpenClaw installations. **Minimum safe version: v2026.3.21**.
 
 ## Features
 
-- **59-point security scan** covering C2 infrastructure, stealers, reverse shells, credential exfiltration, memory poisoning, SKILL.md injection, WebSocket hijacking, ClawJacked brute-force, SSRF, safeBins bypass, ACP auto-approval, PATH hijacking, env override injection, deep link truncation, log poisoning, SHA-1 cache poisoning, Google Chat webhook bypass, CSWSH, MCP tool poisoning, SANDWORM worm detection, rules file backdoor, DM/tool/sandbox policies, persistence mechanisms, plugin auditing, Docker security, and more
+- **41-point security scan** covering C2 infrastructure, stealers, reverse shells, credential exfiltration, memory poisoning, SKILL.md injection, WebSocket hijacking, ClawJacked brute-force, SSRF, safeBins bypass, ACP auto-approval, PATH hijacking, env override injection, deep link truncation, log poisoning, SHA-1 cache poisoning, Google Chat webhook bypass, CSWSH, MCP tool poisoning, SANDWORM worm detection, rules file backdoor, workspace plugin auto-loading, shared-auth scope abuse, exec approval replay, DM/tool/sandbox policies, persistence mechanisms, plugin auditing, Docker security, and more
 - **IOC database** with known C2 IPs, malicious domains, file hashes, publisher blacklists, and skill name patterns
 - **Auto-updating IOC feeds** that pull latest threat intelligence from upstream
 - **Web dashboard** (dark-themed, zero dependencies) with real-time status, process trees, network monitoring, and scan history
@@ -35,7 +35,7 @@ cd ~/.openclaw/workspace/skills/openclaw-security-monitor
 # Make scripts executable
 chmod +x scripts/*.sh scripts/remediate/*.sh
 
-# Run a 59-point scan (read-only, no system changes)
+# Run a 41-point scan (read-only, no system changes)
 ./scripts/scan.sh
 
 # Preview what remediation would do (dry-run, no changes)
@@ -62,11 +62,11 @@ crontab -l | { cat; echo "0 6 * * * $(pwd)/scripts/daily-scan-cron.sh"; } | cron
 ```
 openclaw-security-monitor/
   scripts/
-    scan.sh              # 59-point threat scanner (v4.0)
+    scan.sh              # 41-point threat scanner (v5.0.0)
     remediate.sh         # Orchestrator: scan + per-check remediation
     remediate/
       _common.sh         # Shared helpers (log, confirm, fix_perms)
-      check-01-c2-ips.sh ... check-59-rules-file-backdoor.sh  # 59 per-check scripts
+      check-01-c2-ips.sh ... check-41-device-identity-spoofing.sh  # 41 per-check scripts
     clawhub-scan.sh      # Scan all installed ClawHub skills against IOC database
     dashboard.sh         # CLI security dashboard with witr
     network-check.sh     # Network activity monitor
@@ -86,69 +86,51 @@ openclaw-security-monitor/
     threat-model.md      # Threat model and attack vectors
 ```
 
-## Scan Checks (59)
+## Scan Checks (41)
 
 | # | Check | Severity | Detects |
 |---|-------|----------|---------|
-| 1 | C2 Infrastructure | CRITICAL | Known C2 IPs (91.92.242.x, etc.) in skill code |
-| 2 | AMOS Stealer | CRITICAL | AuthTool, Atomic Stealer, osascript credential theft |
+| 1 | C2 Infrastructure | CRITICAL | Known C2 IPs in skill code |
+| 2 | Malware Signatures & Obfuscation | CRITICAL | AMOS stealer, base64 obfuscation, binary downloads |
 | 3 | Reverse Shells | CRITICAL | bash/python/perl/ruby/php/lua reverse shells |
 | 4 | Credential Exfiltration | CRITICAL | webhook.site, pipedream, ngrok, burpcollaborator |
 | 5 | Crypto Wallet Targeting | WARNING | Seed phrases, private keys, exchange API keys |
-| 6 | Curl-Pipe Attacks | WARNING | `curl\|sh`, `wget\|bash`, remote script execution |
-| 7 | File Permissions | WARNING | Config files with permissions > 600 |
+| 6 | Curl-Pipe Attacks | WARNING | curl\|sh, wget\|bash, remote script execution |
+| 7 | File & Credential Permission Audit | WARNING | Config files, credentials dir, session perms |
 | 8 | Skill Integrity | WARNING | SKILL.md hash changes since last scan |
-| 9 | SKILL.md Injection | WARNING | Shell commands in Prerequisites/install sections |
-| 10 | Memory Poisoning | CRITICAL | Prompt injection in SOUL.md, MEMORY.md, IDENTITY.md |
-| 11 | Base64 Obfuscation | WARNING | Encoded payloads (glot.io-style delivery) |
-| 12 | Binary Downloads | WARNING | .exe, .dmg, .pkg references, password-protected ZIPs |
-| 13 | Gateway Config | CRITICAL | Auth disabled, LAN exposure, version check |
-| 14 | WebSocket Security | CRITICAL | CVE-2026-25253 origin validation bypass |
-| 15 | Malicious Publishers | CRITICAL | Skills from known-bad ClawHub accounts |
-| 16 | Environment Leakage | WARNING | Skills reading .env, .ssh, .aws, keychain files |
-| 17 | DM Policy Audit | WARNING | Channel dmPolicy set to "open", wildcard allowFrom |
-| 18 | Tool Policy Audit | CRITICAL | Elevated tools with wildcard access, empty deny list |
-| 19 | Sandbox Config | WARNING | Sandboxing disabled or set to "off" |
-| 20 | mDNS/Bonjour Exposure | WARNING | mDNS broadcasting in "full" mode (leaks paths) |
-| 21 | Session/Credential Perms | WARNING | Credentials dir, sessions, home dir permissions |
-| 22 | Persistence Mechanisms | WARNING | Unauthorized LaunchAgents, crontabs, systemd services |
-| 23 | Plugin/Extension Audit | CRITICAL | Extensions with exec patterns or malicious domains |
-| 24 | Log Redaction Audit | WARNING | Log redaction disabled, world-readable log directories |
-| 25 | Reverse Proxy Bypass | CRITICAL | Localhost trust bypass via misconfigured reverse proxy |
-| 26 | Exec-Approvals Audit | CRITICAL | Unsafe remote exec approvals, missing approval prompts |
-| 27 | Docker Security | CRITICAL | Root containers, Docker socket mount, privileged mode |
-| 28 | Node.js CVE Check | WARNING | CVE-2026-21636 permission model bypass (Node < 22.12) |
-| 29 | Plaintext Credentials | WARNING | Unencrypted API keys in config (sk-, AKIA, ghp_, xoxb-) |
-| 30 | VS Code Trojans | CRITICAL | Fake ClawdBot/OpenClaw VS Code extensions (Aikido/JFrog) |
-| 31 | Internet Exposure | WARNING | Gateway listening on non-loopback / wildcard interfaces |
-| 32 | MCP Server Security | CRITICAL | Unrestricted MCP servers, prompt injection in tool descriptions |
-| 33 | ClawJacked Protection | CRITICAL | WebSocket brute-force on localhost, no rate limiting (Oasis Security) |
-| 34 | SSRF Protection | WARNING | CVE-2026-26322 gateway tool SSRF, CVE-2026-27488 cron webhook SSRF |
-| 35 | safeBins Bypass | CRITICAL | CVE-2026-28363 (CVSS 9.9) GNU long-option abbreviation bypass |
-| 36 | ACP Auto-Approval | WARNING | GHSA-7jx5 (CVSS 8.2) untrusted metadata bypasses approval prompts |
-| 37 | PATH Hijacking | CRITICAL | GHSA-jqpq command hijacking via user-controlled PATH directories |
-| 38 | Env Override Injection | WARNING | GHSA-82g8 skill env overrides redirect OpenClaw traffic |
-| 39 | Deep Link Truncation | WARNING | CVE-2026-26320 macOS 240-char preview hides malicious payload |
-| 40 | Log Poisoning | WARNING | WebSocket header injection, ANSI escape sequences in logs |
-| 41 | Browser Relay CDP | CRITICAL | CVE-2026-28458 (CVSS 7.5) unauthenticated /cdp WebSocket access |
-| 42 | Browser Control Traversal | CRITICAL | CVE-2026-28462 (CVSS 7.5) path traversal in trace/download API |
-| 43 | Shell Expansion Bypass | CRITICAL | CVE-2026-28463 exec-approvals validate pre-expansion, run post-expansion |
-| 44 | Approval Field Injection | CRITICAL | CVE-2026-28466 unsanitized approval fields bypass exec gating |
-| 45 | Sandbox Bridge Auth | WARNING | CVE-2026-28468 sandbox browser bridge accepts unauthenticated requests |
-| 46 | Webhook DoS | WARNING | CVE-2026-28478 unbounded body parsing enables memory exhaustion |
-| 47 | TAR Path Traversal | CRITICAL | CVE-2026-28453 malicious TAR archives escape extraction boundary |
-| 48 | fetchWithGuard DoS | WARNING | CVE-2026-29609 (CVSS 7.5) memory exhaustion via oversized responses |
-| 49 | /agent/act Auth Bypass | CRITICAL | CVE-2026-28485 unauthenticated access to /agent/act endpoint |
-| 50 | Command Hijacking via PATH | CRITICAL | CVE-2026-29610 user-controlled PATH directories enable command hijacking |
-| 51 | SHA-1 Cache Poisoning | CRITICAL | CVE-2026-28479 (CVSS 8.7) SHA-1 collision enables cache poisoning |
-| 52 | Google Chat Webhook Bypass | CRITICAL | CVE-2026-28469 (CVSS 9.8) cross-account webhook injection via Google Chat |
-| 53 | WebSocket Device Identity Skip | CRITICAL | CVE-2026-28472 gateway WebSocket skips device identity validation |
-| 54 | Cross-Site WebSocket Hijacking | CRITICAL | CVE-2026-32302 CSWSH in trusted-proxy mode |
-| 55 | Device Pairing Credential Exposure | WARNING | GHSA-7h7g-x2px-94hj pairing credentials exposed to unprivileged processes |
-| 56 | Operator Privilege Escalation | CRITICAL | GHSA-vmhq-cqm9-6p7q operator-level privilege escalation |
-| 57 | MCP Tool Poisoning | CRITICAL | OWASP MCP03/MCP06 schema injection via tool descriptions |
-| 58 | SANDWORM Worm Detection | CRITICAL | Autonomous MCP worm propagation via tool call chains |
-| 59 | Rules File Backdoor | CRITICAL | Hidden Unicode injection in .openclaw/rules files (BiDi override, zero-width) |
+| 9 | AI Prompt Injection & Instruction Manipulation | CRITICAL | SKILL.md injection, memory poisoning, MCP tool poisoning, rules file backdoor |
+| 10 | Gateway Config | CRITICAL | Auth disabled, LAN exposure, version check |
+| 11 | WebSocket Security | CRITICAL | CVE-2026-25253, ClawJacked, device identity skip, CSWSH |
+| 12 | Malicious Publishers | CRITICAL | Skills from known-bad ClawHub accounts |
+| 13 | Credential Leakage & Plaintext Secrets | WARNING | Env leakage, hardcoded API keys, plaintext credentials |
+| 14 | DM, Tool & Sandbox Policies | CRITICAL | Open DM, wildcard tools, disabled sandbox |
+| 15 | mDNS/Bonjour Exposure | WARNING | mDNS broadcasting in full mode |
+| 16 | Persistence Mechanisms | WARNING | Unauthorized LaunchAgents, crontabs, systemd |
+| 17 | Log Security & Poisoning | WARNING | Redaction disabled, ANSI injection, header injection |
+| 18 | Plugin/Extension Audit | CRITICAL | Extensions with exec patterns or malicious domains |
+| 19 | Docker Security | CRITICAL | Root containers, socket mount, privileged mode |
+| 20 | Authentication & Route Security | CRITICAL | Proxy bypass, CDP auth, browser bridge, /agent/act |
+| 21 | Exec Guardrails & Approval Security | CRITICAL | safeBins bypass, shell expansion, field injection, replay |
+| 22 | Node.js CVE Check | WARNING | CVE-2026-21636 permission model bypass |
+| 23 | VS Code Trojans | CRITICAL | Fake ClawdBot/OpenClaw VS Code extensions |
+| 24 | Internet Exposure | WARNING | Non-loopback gateway binding |
+| 25 | MCP Server Security | CRITICAL | Unrestricted MCP servers, prompt injection |
+| 26 | PATH Hijacking & Command Resolution | CRITICAL | GHSA-jqpq, CVE-2026-29610 command hijacking |
+| 27 | SSRF Protection | WARNING | CVE-2026-26322, CVE-2026-27488 SSRF |
+| 28 | Path Traversal & File Handling | CRITICAL | Deep link truncation, browser control, TAR traversal |
+| 29 | DoS Protection | WARNING | CVE-2026-28478, CVE-2026-29609 memory exhaustion |
+| 30 | ACP Auto-Approval | WARNING | GHSA-7jx5 untrusted metadata bypass |
+| 31 | Env Override Injection | WARNING | GHSA-82g8 skill env overrides |
+| 32 | Privilege Escalation & Scope Abuse | CRITICAL | Pairing creds, operator escalation, shared-auth scope |
+| 33 | SHA-1 Cache Poisoning | CRITICAL | CVE-2026-28479 SHA-1 collision cache attack |
+| 34 | Google Chat Webhook Bypass | CRITICAL | CVE-2026-28469 cross-account webhook injection |
+| 35 | SANDWORM Worm Detection | CRITICAL | Autonomous MCP worm propagation |
+| 36 | Workspace Plugin Auto-Discovery | CRITICAL | GHSA-99qw malicious .openclaw/extensions loading |
+| 37 | Symlink Traversal | CRITICAL | CVE-2026-32013, CVE-2026-32055 symlink escape |
+| 38 | Sandbox Escape & Session Inheritance | CRITICAL | CVE-2026-32048, CVE-2026-32051 session bypass |
+| 39 | Shell Environment RCE | CRITICAL | CVE-2026-32056, CVE-2026-27566 env injection |
+| 40 | VNC & Observer Authentication | CRITICAL | CVE-2026-32064 unauthenticated VNC observer |
+| 41 | Device Identity & Metadata Spoofing | CRITICAL | CVE-2026-32014, CVE-2026-32042, CVE-2026-32025 |
 
 ## Remediation Guide
 
@@ -1415,75 +1397,57 @@ OPENCLAW_ALLOW_UNATTENDED_REMEDIATE=1 ./scripts/remediate.sh --yes
 # Remediate a single check
 ./scripts/remediate.sh --check 7 --dry-run
 
-# Run all 59 scripts without scanning
+# Run all 41 scripts without scanning
 ./scripts/remediate.sh --all
 ```
 
 ### Per-Check Remediation Scripts
 
-Each of the 59 scan checks has a dedicated remediation script in `scripts/remediate/`. Scripts are standalone, support `--yes` and `--dry-run`, and return exit 0 (fixed), 1 (failed), or 2 (nothing to fix). Unattended mode (`--yes`) requires `OPENCLAW_ALLOW_UNATTENDED_REMEDIATE=1`.
+Each of the 41 scan checks has a dedicated remediation script in `scripts/remediate/`. Scripts are standalone, support `--yes` and `--dry-run`, and return exit 0 (fixed), 1 (failed), or 2 (nothing to fix). Unattended mode (`--yes`) requires `OPENCLAW_ALLOW_UNATTENDED_REMEDIATE=1`.
 
 | Script | Check | Type |
 |--------|-------|------|
 | `check-01-c2-ips.sh` | C2 Infrastructure | Guidance |
-| `check-02-amos-stealer.sh` | AMOS Stealer | Guidance |
+| `check-02-malware-sigs.sh` | Malware Signatures & Obfuscation | Guidance |
 | `check-03-reverse-shells.sh` | Reverse Shells | Auto-fix (Gatekeeper) |
-| `check-04-exfil-endpoints.sh` | Exfil Endpoints | Auto-fix (/etc/hosts) |
-| `check-05-crypto-wallet.sh` | Crypto Wallets | Guidance |
+| `check-04-exfil-endpoints.sh` | Credential Exfiltration | Auto-fix (/etc/hosts) |
+| `check-05-crypto-wallet.sh` | Crypto Wallet Targeting | Guidance |
 | `check-06-curl-pipe.sh` | Curl-Pipe Attacks | Auto-fix (tools.deny) |
-| `check-07-file-perms.sh` | File Permissions | Auto-fix (chmod) |
+| `check-07-file-perms.sh` | File & Credential Permission Audit | Auto-fix (chmod) |
 | `check-08-skill-integrity.sh` | Skill Integrity | Guidance |
-| `check-09-skillmd-inject.sh` | SKILL.md Injection | Guidance |
-| `check-10-memory-poison.sh` | Memory Poisoning | Guidance |
-| `check-11-base64-obfusc.sh` | Base64 Obfuscation | Guidance |
-| `check-12-binary-dl.sh` | Binary Downloads | Guidance |
-| `check-13-gateway-config.sh` | Gateway Config | Auto-fix (bind/auth) |
-| `check-14-websocket-sec.sh` | WebSocket Security | Guidance |
-| `check-15-malicious-pub.sh` | Malicious Publishers | Guidance |
-| `check-16-env-leakage.sh` | Env Leakage | Guidance |
-| `check-17-dm-policy.sh` | DM Policy | Auto-fix (restricted) |
-| `check-18-tool-policy.sh` | Tool Policy | Auto-fix (deny list) |
-| `check-19-sandbox-config.sh` | Sandbox Config | Auto-fix (enable) |
-| `check-20-mdns-exposure.sh` | mDNS Exposure | Auto-fix (disable) |
-| `check-21-session-perms.sh` | Session Perms | Auto-fix (chmod) |
-| `check-22-persistence.sh` | Persistence | Guidance |
-| `check-23-plugin-audit.sh` | Plugin Audit | Guidance |
-| `check-24-log-redaction.sh` | Log Redaction | Auto-fix (enable) |
-| `check-25-proxy-bypass.sh` | Proxy Bypass | Auto-fix (config) |
-| `check-26-exec-approvals.sh` | Exec Approvals | Auto-fix (perms) |
-| `check-27-docker-sec.sh` | Docker Security | Guidance |
-| `check-28-nodejs-cve.sh` | Node.js CVE | Guidance |
-| `check-29-plaintext-creds.sh` | Plaintext Creds | Guidance |
-| `check-30-vscode-trojans.sh` | VS Code Trojans | Auto-fix (remove) |
-| `check-31-internet-expose.sh` | Internet Exposure | Auto-fix (bind) |
-| `check-32-mcp-security.sh` | MCP Security | Auto-fix (config) |
-| `check-33-clawjacked.sh` | ClawJacked | Auto-fix (gateway auth) |
-| `check-34-ssrf.sh` | SSRF Protection | Guidance |
-| `check-35-safebins.sh` | safeBins Bypass | Guidance |
-| `check-36-acp-approval.sh` | ACP Auto-Approval | Auto-fix (disable) |
-| `check-37-path-hijack.sh` | PATH Hijacking | Auto-fix (remove) |
-| `check-38-env-override.sh` | Env Override | Guidance |
-| `check-39-deeplink.sh` | Deep Link Truncation | Guidance |
-| `check-40-log-poisoning.sh` | Log Poisoning | Auto-fix (sanitize) |
-| `check-41-cdp-relay.sh` | Browser Relay CDP | Auto-fix (disable) |
-| `check-42-browser-traversal.sh` | Browser Control Traversal | Guidance |
-| `check-43-shell-expansion.sh` | Shell Expansion Bypass | Guidance |
-| `check-44-approval-inject.sh` | Approval Injection | Guidance |
-| `check-45-sandbox-bridge.sh` | Sandbox Bridge Auth | Guidance |
-| `check-46-webhook-dos.sh` | Webhook DoS | Guidance |
-| `check-47-tar-traversal.sh` | TAR Path Traversal | Guidance |
-| `check-48-fetch-dos.sh` | fetchWithGuard DoS | Guidance |
-| `check-49-agent-act.sh` | /agent/act Auth | Guidance |
-| `check-50-path-hijack-cve.sh` | PATH Hijacking CVE | Guidance |
-| `check-51-sha1-cache.sh` | SHA-1 Cache Poisoning | Guidance |
-| `check-52-gchat-webhook.sh` | Google Chat Webhook | Guidance |
-| `check-53-ws-device-identity.sh` | WebSocket Device Identity | Guidance |
-| `check-54-cswsh.sh` | Cross-Site WS Hijacking | Guidance |
-| `check-55-pairing-creds.sh` | Pairing Credentials | Guidance |
-| `check-56-operator-privesc.sh` | Operator Privesc | Guidance |
-| `check-57-mcp-poisoning.sh` | MCP Tool Poisoning | Auto-fix (quarantine) |
-| `check-58-sandworm.sh` | SANDWORM Worm | Auto-fix (remove) |
-| `check-59-rules-backdoor.sh` | Rules File Backdoor | Auto-fix (strip Unicode) |
+| `check-09-prompt-injection.sh` | AI Prompt Injection & Instruction Manipulation | Guidance |
+| `check-10-gateway-config.sh` | Gateway Config | Auto-fix (bind/auth) |
+| `check-11-websocket-sec.sh` | WebSocket Security | Guidance |
+| `check-12-malicious-pub.sh` | Malicious Publishers | Guidance |
+| `check-13-cred-leakage.sh` | Credential Leakage & Plaintext Secrets | Guidance |
+| `check-14-dm-tool-sandbox.sh` | DM, Tool & Sandbox Policies | Auto-fix (config) |
+| `check-15-mdns-exposure.sh` | mDNS/Bonjour Exposure | Auto-fix (disable) |
+| `check-16-persistence.sh` | Persistence Mechanisms | Guidance |
+| `check-17-log-security.sh` | Log Security & Poisoning | Auto-fix (sanitize) |
+| `check-18-plugin-audit.sh` | Plugin/Extension Audit | Guidance |
+| `check-19-docker-sec.sh` | Docker Security | Guidance |
+| `check-20-auth-route-sec.sh` | Authentication & Route Security | Guidance |
+| `check-21-exec-guardrails.sh` | Exec Guardrails & Approval Security | Guidance |
+| `check-22-nodejs-cve.sh` | Node.js CVE Check | Guidance |
+| `check-23-vscode-trojans.sh` | VS Code Trojans | Auto-fix (remove) |
+| `check-24-internet-expose.sh` | Internet Exposure | Auto-fix (bind) |
+| `check-25-mcp-security.sh` | MCP Server Security | Auto-fix (config) |
+| `check-26-path-hijack.sh` | PATH Hijacking & Command Resolution | Auto-fix (remove) |
+| `check-27-ssrf.sh` | SSRF Protection | Guidance |
+| `check-28-path-traversal.sh` | Path Traversal & File Handling | Guidance |
+| `check-29-dos-protection.sh` | DoS Protection | Guidance |
+| `check-30-acp-approval.sh` | ACP Auto-Approval | Auto-fix (disable) |
+| `check-31-env-override.sh` | Env Override Injection | Guidance |
+| `check-32-privesc-scope.sh` | Privilege Escalation & Scope Abuse | Guidance |
+| `check-33-sha1-cache.sh` | SHA-1 Cache Poisoning | Guidance |
+| `check-34-gchat-webhook.sh` | Google Chat Webhook Bypass | Guidance |
+| `check-35-sandworm.sh` | SANDWORM Worm Detection | Auto-fix (remove) |
+| `check-36-workspace-plugin.sh` | Workspace Plugin Auto-Discovery | Guidance |
+| `check-37-symlink-traversal.sh` | Symlink Traversal | Guidance |
+| `check-38-sandbox-escape.sh` | Sandbox Escape & Session Inheritance | Guidance |
+| `check-39-shell-env-rce.sh` | Shell Environment RCE | Guidance |
+| `check-40-vnc-observer.sh` | VNC & Observer Authentication | Guidance |
+| `check-41-device-identity-spoofing.sh` | Device Identity & Metadata Spoofing | Guidance |
 
 **Auto-fix** scripts modify the system (permissions, config settings, /etc/hosts).
 **Guidance** scripts print manual instructions for destructive or external actions (skill removal, credential rotation, Docker changes).
@@ -1782,7 +1746,7 @@ The agent auto-discovers skills from `~/.openclaw/workspace/skills/` via SKILL.m
 
 | Command | Description |
 |---------|-------------|
-| `/security-scan` | Run 59-point security scan |
+| `/security-scan` | Run 41-point security scan |
 | `/security-remediate` | Auto-fix common findings |
 | `/security-dashboard` | CLI security dashboard |
 | `/security-network` | Network connection monitor |

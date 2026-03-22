@@ -43,6 +43,39 @@ log() {
     fi
 }
 
+extract_version() {
+    echo "$1" | grep -oE '[0-9]{4}\.[0-9]+\.[0-9]+' | head -1
+}
+
+version_lt() {
+    local left right
+    left=$(extract_version "$1")
+    right=$(extract_version "$2")
+    [ -z "$left" ] || [ -z "$right" ] && return 1
+
+    local lmaj lmin lpat rmaj rmin rpat
+    lmaj=$(echo "$left" | cut -d'.' -f1)
+    lmin=$(echo "$left" | cut -d'.' -f2)
+    lpat=$(echo "$left" | cut -d'.' -f3)
+    rmaj=$(echo "$right" | cut -d'.' -f1)
+    rmin=$(echo "$right" | cut -d'.' -f2)
+    rpat=$(echo "$right" | cut -d'.' -f3)
+
+    if [ "$lmaj" -lt "$rmaj" ] 2>/dev/null; then
+        return 0
+    elif [ "$lmaj" -gt "$rmaj" ] 2>/dev/null; then
+        return 1
+    fi
+
+    if [ "$lmin" -lt "$rmin" ] 2>/dev/null; then
+        return 0
+    elif [ "$lmin" -gt "$rmin" ] 2>/dev/null; then
+        return 1
+    fi
+
+    [ "$lpat" -lt "$rpat" ] 2>/dev/null
+}
+
 confirm() {
     local prompt="$1"
     if $AUTO; then return 0; fi
