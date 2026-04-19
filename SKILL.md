@@ -2,12 +2,24 @@
 name: openclaw-security-monitor
 description: Proactive security monitoring, threat scanning, and auto-remediation for OpenClaw deployments
 tags: [security, scan, remediation, monitoring, threat-detection, hardening]
-version: 5.1.0
+version: 5.1.1
 author: Adrian Birzu
 user-invocable: true
 disable-model-invocation: true
+metadata:
+  openclaw:
+    emoji: "🛡️"
+    homepage: "https://github.com/adibirzu/openclaw-security-monitor"
+    os: ["darwin", "linux"]
+    requires:
+      bins: ["bash", "curl", "node", "lsof"]
+    install:
+      - id: "brew-node"
+        kind: "brew"
+        formula: "node"
+        bins: ["node"]
+        label: "Install Node.js (brew)"
 ---
-<!-- {"requires":{"bins":["bash","curl","node","lsof"],"optionalBins":["witr","docker","openclaw"],"env":{"OPENCLAW_TELEGRAM_TOKEN":"Optional: Telegram bot token for daily security alerts","OPENCLAW_HOME":"Optional: Override default ~/.openclaw directory"}}} -->
 
 # Security Monitor
 
