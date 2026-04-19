@@ -19,6 +19,7 @@ This project provides defense-in-depth monitoring for self-hosted OpenClaw insta
 - **41-point security scan** covering C2 infrastructure, stealers, reverse shells, credential exfiltration, memory poisoning, SKILL.md injection, WebSocket hijacking, ClawJacked brute-force, SSRF, safeBins bypass, ACP auto-approval, PATH hijacking, env override injection, deep link truncation, log poisoning, SHA-1 cache poisoning, Google Chat webhook bypass, CSWSH, MCP tool poisoning, SANDWORM worm detection, rules file backdoor, workspace plugin auto-loading, shared-auth scope abuse, exec approval replay, DM/tool/sandbox policies, persistence mechanisms, plugin auditing, Docker security, and more
 - **IOC database** with known C2 IPs, malicious domains, file hashes, publisher blacklists, and skill name patterns
 - **Auto-updating IOC feeds** that pull latest threat intelligence from upstream
+- **Bundle-plugin manifest** for `clawhub package publish --family bundle-plugin`
 - **Web dashboard** (dark-themed, zero dependencies) with real-time status, process trees, network monitoring, and scan history
 - **Daily automated scans** with Telegram alerting
 - **Process ancestry tracking** via [witr](https://github.com/pranshuparmar/witr) integration
@@ -61,6 +62,8 @@ crontab -l | { cat; echo "0 6 * * * $(pwd)/scripts/daily-scan-cron.sh"; } | cron
 
 ```
 openclaw-security-monitor/
+  .codex-plugin/
+    plugin.json          # Bundle-plugin manifest for ClawHub/OpenClaw plugin publishing
   scripts/
     scan.sh              # 41-point threat scanner (v5.1.0)
     remediate.sh         # Orchestrator: scan + per-check remediation

@@ -1,0 +1,40 @@
+{
+  "name": "openclaw-security-monitor",
+  "version": "5.2.0",
+  "description": "Security monitoring, threat scanning, and remediation guidance for OpenClaw deployments.",
+  "author": {
+    "name": "Adrian Birzu",
+    "url": "https://github.com/adibirzu"
+  },
+  "homepage": "https://github.com/adibirzu/openclaw-security-monitor",
+  "repository": "https://github.com/adibirzu/openclaw-security-monitor",
+  "license": "MIT-0",
+  "keywords": [
+    "openclaw",
+    "security",
+    "monitoring",
+    "threat-detection",
+    "clawhub",
+    "bundle-plugin"
+  ],
+  "skills": "./",
+  "interface": {
+    "displayName": "OpenClaw Security Monitor",
+    "shortDescription": "Scan OpenClaw for known threats and unsafe configuration.",
+    "longDescription": "Bundle plugin that ships the OpenClaw Security Monitor skill, threat IOCs, dashboard assets, and remediation scripts for hardened OpenClaw deployments.",
+    "developerName": "Adrian Birzu",
+    "category": "Security",
+    "capabilities": [
+      "Interactive",
+      "Read",
+      "Write"
+    ],
+    "websiteURL": "https://github.com/adibirzu/openclaw-security-monitor",
+    "defaultPrompt": [
+      "Run a full OpenClaw security scan.",
+      "Check whether my OpenClaw setup is exposed.",
+      "Review my skills for known malicious indicators."
+    ],
+    "brandColor": "#0F766E"
+  }
+}
