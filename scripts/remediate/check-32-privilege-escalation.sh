@@ -30,7 +30,7 @@ if version_lt "$OC_VERSION" "2026.3.21"; then
     log "short-lived bootstrap tokens. Compromised codes grant persistent access."
     log ""
     guidance \
-        "Upgrade OpenClaw to v2026.3.21+ to fix GHSA-7h7g-x2px-94hj" \
+        "Upgrade OpenClaw to v2026.4.15+ to fix GHSA-7h7g-x2px-94hj and subsequent auth issues" \
         "Rotate device credentials after upgrading: openclaw device rotate-credentials"
     FOUND=true
 fi
@@ -48,7 +48,7 @@ if version_lt "$OC_VERSION" "2026.3.21"; then
     log "endpoints to create/delete browser profiles."
     log ""
     guidance \
-        "Upgrade OpenClaw to v2026.3.21+ to fix GHSA-vmhq-cqm9-6p7q" \
+        "Upgrade OpenClaw to v2026.4.15+ to fix GHSA-vmhq-cqm9-6p7q and subsequent auth issues" \
         "Audit operator accounts for unnecessary write permissions"
     FOUND=true
 fi
@@ -66,7 +66,7 @@ if version_lt "$OC_VERSION" "2026.3.21"; then
         log "Shared gateway credentials allow scope escalation across sessions."
         log ""
         guidance \
-            "Upgrade OpenClaw to v2026.3.21+ to fix GHSA-rqpp-rjj8-7wv8" \
+            "Upgrade OpenClaw to v2026.4.15+ to fix GHSA-rqpp-rjj8-7wv8 and subsequent auth issues" \
             "Rotate shared gateway tokens/passwords after upgrading"
         FOUND=true
     fi
@@ -85,7 +85,7 @@ if version_lt "$OC_VERSION" "2026.3.21"; then
         log "Pending pairing requests can be exploited to escalate privileges."
         log ""
         guidance \
-            "Upgrade OpenClaw to v2026.3.21+ to fix GHSA-4jpw-hj22-2xmc and GHSA-63f5-hhc7-cx6p" \
+            "Upgrade OpenClaw to v2026.4.15+ to fix GHSA-4jpw-hj22-2xmc, GHSA-63f5-hhc7-cx6p, and subsequent auth issues" \
             "Re-issue pending pairing requests after upgrading"
         FOUND=true
     fi
@@ -97,7 +97,7 @@ fi
 if [ "$FOUND" = true ]; then
     log ""
     log "  Advisories covered: GHSA-7h7g, GHSA-vmhq, GHSA-rqpp, GHSA-4jpw, GHSA-63f5"
-    log "  Minimum safe version: v2026.3.21+"
+    log "  Minimum safe version: v2026.4.15+"
     FIXED=1  # signal to orchestrator that guidance was emitted
 else
     log "  No privilege-escalation findings for current version"

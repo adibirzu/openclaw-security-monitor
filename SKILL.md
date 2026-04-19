@@ -2,7 +2,7 @@
 name: openclaw-security-monitor
 description: Proactive security monitoring, threat scanning, and auto-remediation for OpenClaw deployments
 tags: [security, scan, remediation, monitoring, threat-detection, hardening]
-version: 5.0.0
+version: 5.1.0
 author: Adrian Birzu
 user-invocable: true
 disable-model-invocation: true
@@ -30,14 +30,14 @@ Run a comprehensive 41-point security scan:
 10. Gateway security configuration audit
 11. WebSocket security (CVE-2026-25253, ClawJacked, device identity skip, CSWSH)
 12. Known malicious publisher detection
-13. Credential leakage & plaintext secrets (env access, hardcoded API keys)
-14. DM, tool & sandbox policies (open DM, elevated tools, disabled sandbox)
+13. Credential leakage & plaintext secrets (env access, hardcoded API keys, config.get redaction bypass GHSA-8372)
+14. DM, tool & sandbox policies (open DM, elevated tools, disabled sandbox, Matrix room-control bypass GHSA-2gvc)
 15. mDNS/Bonjour exposure detection
 16. Persistence mechanism scan (LaunchAgents, crontabs, systemd)
 17. Log security & poisoning (redaction, ANSI injection, header injection)
 18. Plugin/extension security audit
 19. Docker container security (root, socket mount, privileged mode)
-20. Authentication & route security (proxy bypass, CDP auth, browser bridge, /agent/act)
+20. Authentication & route security (proxy bypass, CDP auth, browser bridge, /agent/act, webchat local-root bypass GHSA-mr34, SecretRef stale auth GHSA-xmxx)
 21. Exec guardrails & approval security (safeBins bypass CVE-2026-28363, shell expansion CVE-2026-28463, approval injection CVE-2026-28466, replay)
 22. Node.js version / CVE-2026-21636 permission model bypass
 23. VS Code extension trojan detection

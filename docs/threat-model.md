@@ -286,7 +286,7 @@ Combined with persistent memory (SOUL.md, MEMORY.md), these create compounding r
 
 ## Hardening Recommendations
 
-1. **Update OpenClaw to v2026.3.13+** (current safe baseline; March 2026 advisories affected builds through v2026.3.12)
+1. **Update OpenClaw to v2026.4.15+** (current safe baseline; April 16, 2026 advisories were fixed in v2026.4.15)
 2. Set `gateway.auth.mode` to `token` (never `none`)
 3. Bind gateway to `loopback` not `lan`
 4. Set file permissions to 600 on configs
@@ -313,7 +313,7 @@ Combined with persistent memory (SOUL.md, MEMORY.md), these create compounding r
 25. **Update to v2026.2.13+** for browser control path traversal and webhook DoS fixes (CVE-2026-28462, CVE-2026-28478)
 26. **Update to v2026.2.14+** for exec shell expansion, approval injection, TAR traversal, fetchWithGuard fixes
 27. **Update to v2026.2.15+** for git pre-commit hook command injection fix (CVE-2026-28484, CVSS 9.3)
-28. **Update to v2026.3.13+** for the March 2026 advisory wave, including workspace plugin auto-discovery, shared-auth scope escalation, pairing-scope abuse, and approval replay fixes
+28. **Update to v2026.4.15+** for the current safe baseline, including the March and April 2026 advisory waves
 29. **Verify downloads** — never trust Bing/Google AI search results for OpenClaw installers; only use official GitHub (Huntress advisory)
 30. **Audit head/tail/grep in safeBins** — these can read arbitrary files via glob patterns on unpatched versions (CVE-2026-28463)
 

@@ -1,5 +1,5 @@
 #!/bin/bash
-# OpenClaw Security Monitor - Enhanced Threat Scanner v5.0.0
+# OpenClaw Security Monitor - Enhanced Threat Scanner v5.1.0
 # https://github.com/adibirzu/openclaw-security-monitor
 #
 # 41-point security scanner (consolidated from 62). Detects: ClawHavoc AMOS
@@ -24,9 +24,12 @@
 # CVE-2026-27566), VNC observer auth bypass (CVE-2026-32064), device
 # identity spoofing (CVE-2026-32014, CVE-2026-32042, CVE-2026-32025),
 # privilege escalation, scope abuse, DM/tool/sandbox policy violations,
-# persistence mechanisms, plugin threats, and more.
+# Matrix room-control auth bypass (GHSA-2gvc-4f3c-2855), webchat media
+# local-root bypass (GHSA-mr34-9552-qr95), gateway SecretRef stale bearer
+# auth (GHSA-xmxx-7p24-h892), config.get redaction bypass
+# (GHSA-8372-7vhw-cm6q), persistence mechanisms, plugin threats, and more.
 #
-# IOC database updated: 2026-03-22
+# IOC database updated: 2026-04-19
 # Threat coverage: 60+ CVEs, 60+ GHSAs, 1,200+ malicious packages
 #
 # Exit codes: 0=SECURE, 1=WARNINGS, 2=COMPROMISED
@@ -43,6 +46,8 @@ WORKSPACE_DIR="$OPENCLAW_DIR/workspace"
 LOG_DIR="$OPENCLAW_DIR/logs"
 LOG_FILE="$LOG_DIR/security-scan.log"
 TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+SCANNER_VERSION="5.1.0"
+SAFE_BASELINE="2026.4.15"
 export PATH="$HOME/.local/bin:/opt/homebrew/opt/node@22/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
 
 CRITICAL=0
@@ -62,33 +67,58 @@ extract_version() {
     echo "$1" | grep -oE '[0-9]{4}\.[0-9]+\.[0-9]+' | head -1
 }
 
-version_lt() {
+version_cmp() {
     local left right
     left=$(extract_version "$1")
     right=$(extract_version "$2")
     [ -z "$left" ] || [ -z "$right" ] && return 1
 
     local lmaj lmin lpat rmaj rmin rpat
-    lmaj=$(echo "$left" | cut -d'.' -f1)
-    lmin=$(echo "$left" | cut -d'.' -f2)
-    lpat=$(echo "$left" | cut -d'.' -f3)
-    rmaj=$(echo "$right" | cut -d'.' -f1)
-    rmin=$(echo "$right" | cut -d'.' -f2)
-    rpat=$(echo "$right" | cut -d'.' -f3)
+    IFS='.' read -r lmaj lmin lpat <<< "$left"
+    IFS='.' read -r rmaj rmin rpat <<< "$right"
 
     if [ "$lmaj" -lt "$rmaj" ] 2>/dev/null; then
+        echo "-1"
         return 0
     elif [ "$lmaj" -gt "$rmaj" ] 2>/dev/null; then
-        return 1
+        echo "1"
+        return 0
     fi
 
     if [ "$lmin" -lt "$rmin" ] 2>/dev/null; then
+        echo "-1"
         return 0
     elif [ "$lmin" -gt "$rmin" ] 2>/dev/null; then
-        return 1
+        echo "1"
+        return 0
     fi
 
-    [ "$lpat" -lt "$rpat" ] 2>/dev/null
+    if [ "$lpat" -lt "$rpat" ] 2>/dev/null; then
+        echo "-1"
+    elif [ "$lpat" -gt "$rpat" ] 2>/dev/null; then
+        echo "1"
+    else
+        echo "0"
+    fi
+}
+
+version_lt() {
+    local cmp
+    cmp=$(version_cmp "$1" "$2") || return 1
+    [ "$cmp" = "-1" ]
+}
+
+version_ge() {
+    local cmp
+    cmp=$(version_cmp "$1" "$2") || return 1
+    [ "$cmp" = "0" ] || [ "$cmp" = "1" ]
+}
+
+version_in_range() {
+    local cmp_min cmp_max
+    cmp_min=$(version_cmp "$1" "$2") || return 1
+    cmp_max=$(version_cmp "$1" "$3") || return 1
+    [ "$cmp_min" != "-1" ] && [ "$cmp_max" = "-1" ]
 }
 
 # Emit a version advisory finding. Usage:
@@ -108,6 +138,19 @@ version_advisory() {
             return 0
         fi
     fi
+    return 1
+}
+
+config_get_first() {
+    local key value
+    for key in "$@"; do
+        value=$(run_with_timeout 5 openclaw config get "$key" 2>/dev/null || echo "")
+        case "$value" in
+            ""|"null"|"undefined") continue ;;
+        esac
+        printf '%s\n' "$value"
+        return 0
+    done
     return 1
 }
 
@@ -165,7 +208,7 @@ TOTAL_CHECKS=41
 
 log "========================================"
 log "OPENCLAW SECURITY SCAN - $TIMESTAMP"
-log "Scanner: v5.0.0 (openclaw-security-monitor)"
+log "Scanner: v$SCANNER_VERSION (openclaw-security-monitor)"
 log "========================================"
 
 # Load IOC data
@@ -517,8 +560,8 @@ if command -v openclaw &>/dev/null; then
 
     OC_VERSION=$(run_with_timeout 5 openclaw --version 2>/dev/null || echo "unknown")
     log "  OpenClaw version: $OC_VERSION"
-    if version_lt "$OC_VERSION" "2026.3.21"; then
-        result_critical "OpenClaw version $OC_VERSION is below the current safe baseline (v2026.3.21+) and misses March 2026 security fixes"
+    if version_lt "$OC_VERSION" "$SAFE_BASELINE"; then
+        result_critical "OpenClaw version $OC_VERSION is below the current safe baseline (v$SAFE_BASELINE+) and misses the April 2026 security rollup"
         GW_ISSUES=$((GW_ISSUES + 1))
     fi
 fi
@@ -685,6 +728,13 @@ if [ -d "$OPENCLAW_DIR/credentials" ]; then
     fi
 fi
 
+if command -v openclaw &>/dev/null && [ -n "${OC_VERSION:-}" ] && [ "${OC_VERSION:-}" != "unknown" ]; then
+    if version_lt "$OC_VERSION" "2026.4.14"; then
+        result_critical "OpenClaw v$OC_VERSION may return unredacted sourceConfig/runtimeConfig values through config.get aliases (GHSA-8372-7vhw-cm6q). Update to v2026.4.14+"
+        CRED13_ISSUES=$((CRED13_ISSUES + 1))
+    fi
+fi
+
 if [ "$CRED13_ISSUES" -eq 0 ]; then
     result_clean "No credential leakage or plaintext secrets detected"
 fi
@@ -736,6 +786,16 @@ if command -v openclaw &>/dev/null; then
         POL14_ISSUES=$((POL14_ISSUES + 1))
     elif [ -n "$SANDBOX_MODE" ]; then
         log "  Sandbox mode: $SANDBOX_MODE"
+    fi
+
+    if [ -n "${OC_VERSION:-}" ] && [ "${OC_VERSION:-}" != "unknown" ] && version_in_range "$OC_VERSION" "2026.3.28" "2026.4.15"; then
+        MATRIX_STATE=$(config_get_first "channels.matrix.enabled" "integrations.matrix.enabled" "channels.matrix.rooms" "integrations.matrix.rooms" || echo "")
+        if [ -n "$MATRIX_STATE" ] && [ "$MATRIX_STATE" != "false" ] && [ "$MATRIX_STATE" != "off" ] && [ "$MATRIX_STATE" != "[]" ]; then
+            result_critical "OpenClaw v$OC_VERSION: Matrix room-control commands can bypass sender authorization (GHSA-2gvc-4f3c-2855). Update to v2026.4.15+"
+        else
+            result_warn "OpenClaw v$OC_VERSION is in the Matrix room-control auth bypass window (GHSA-2gvc-4f3c-2855). Verify Matrix is disabled or update to v2026.4.15+"
+        fi
+        POL14_ISSUES=$((POL14_ISSUES + 1))
     fi
 fi
 
@@ -964,6 +1024,10 @@ if command -v openclaw &>/dev/null; then
     fi
 
     if [ -n "${OC_VERSION:-}" ] && [ "${OC_VERSION:-}" != "unknown" ]; then
+        GATEWAY_AUTH_MODE=$(run_with_timeout 5 openclaw config get "gateway.auth.mode" 2>/dev/null || echo "")
+        GATEWAY_SECRET_REF=$(config_get_first "gateway.auth.secretRef" "gateway.auth.tokenSecretRef" "gateway.auth.bearer.secretRef" || echo "")
+        WEBCHAT_STATE=$(config_get_first "channels.webchat.enabled" "integrations.webchat.enabled" "webchat.enabled" "gateway.webchat.enabled" || echo "")
+
         # Browser Relay CDP unauthenticated access (was check 41, CVE-2026-28458, fixed v2026.2.1)
         if command -v lsof &>/dev/null; then
             CDP_LISTEN=$(lsof -iTCP:18792 -sTCP:LISTEN -nP 2>/dev/null | grep -v COMMAND)
@@ -982,6 +1046,31 @@ if command -v openclaw &>/dev/null; then
 
         # /agent/act no authentication (was check 49, CVE-2026-28485, fixed v2026.2.12)
         if version_advisory "2026.2.12" "/agent/act HTTP route unauthenticated (CVE-2026-28485)"; then
+            AUTH20_ISSUES=$((AUTH20_ISSUES + 1))
+        fi
+
+        # April 2026 auth fixes
+        if version_lt "$OC_VERSION" "2026.4.15"; then
+            if [ -n "$GATEWAY_SECRET_REF" ]; then
+                result_critical "OpenClaw v$OC_VERSION: rotated gateway SecretRef bearer tokens can remain accepted until restart (GHSA-xmxx-7p24-h892). Restart after rotation and update to v2026.4.15+"
+                AUTH20_ISSUES=$((AUTH20_ISSUES + 1))
+            elif [ "$GATEWAY_AUTH_MODE" = "bearer" ] || [ "$GATEWAY_AUTH_MODE" = "token" ]; then
+                result_warn "OpenClaw v$OC_VERSION uses bearer/token gateway auth below v2026.4.15; verify it is not backed by SecretRef and update for GHSA-xmxx-7p24-h892"
+                AUTH20_ISSUES=$((AUTH20_ISSUES + 1))
+            fi
+        fi
+
+        if version_in_range "$OC_VERSION" "2026.4.7" "2026.4.15"; then
+            if [ -n "$WEBCHAT_STATE" ] && [ "$WEBCHAT_STATE" != "false" ] && [ "$WEBCHAT_STATE" != "off" ] && [ "$WEBCHAT_STATE" != "[]" ]; then
+                result_critical "OpenClaw v$OC_VERSION: webchat media embedding can escape configured local-root containment (GHSA-mr34-9552-qr95). Update to v2026.4.15+"
+            else
+                result_warn "OpenClaw v$OC_VERSION is in the webchat media local-root bypass window (GHSA-mr34-9552-qr95). Verify webchat is disabled or update to v2026.4.15+"
+            fi
+            AUTH20_ISSUES=$((AUTH20_ISSUES + 1))
+        fi
+
+        if version_lt "$OC_VERSION" "2026.4.15"; then
+            result_warn "OpenClaw v$OC_VERSION predates additional April 2026 auth/context fixes for Teams SSO sender authorization, collect-mode sender context reuse, heartbeat webhook wake trust, and media replay tool-policy context (GHSA-gc9r-867r-j85f, GHSA-jwrq-8g5x-5fhm, GHSA-g2hm-779g-vm32, GHSA-r77c-2cmr-7p47). Update to v2026.4.15+"
             AUTH20_ISSUES=$((AUTH20_ISSUES + 1))
         fi
 
@@ -1303,6 +1392,11 @@ if command -v openclaw &>/dev/null && [ -n "${OC_VERSION:-}" ] && [ "${OC_VERSIO
 
     # TAR archive path traversal (was check 47, CVE-2026-28453, fixed v2026.2.14)
     if version_advisory "2026.2.14" "TAR archive path traversal (CVE-2026-28453)"; then
+        PTRAV28_ISSUES=$((PTRAV28_ISSUES + 1))
+    fi
+
+    if version_lt "$OC_VERSION" "2026.4.15"; then
+        result_warn "OpenClaw v$OC_VERSION predates the April 2026 browser snapshot/screenshot route fix and QMD memory_get canonical-path enforcement (GHSA-c4qm-58hj-j6pj, GHSA-f934-5rqf-xx47). Update to v2026.4.15+"
         PTRAV28_ISSUES=$((PTRAV28_ISSUES + 1))
     fi
 fi

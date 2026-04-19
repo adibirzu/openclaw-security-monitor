@@ -17,7 +17,7 @@ if version_lt "$OC_VERSION" "2026.3.21"; then
     log "  CRITICAL: OpenClaw version $OC_VERSION is vulnerable to sandbox escape"
     log "    CVE-2026-32048 — sessions_spawn bypass allows breaking out of sandboxed sessions"
     log "    CVE-2026-32051 — operator.write auth mismatch grants unintended write access"
-    guidance "Upgrade OpenClaw to v2026.3.21+ to patch CVE-2026-32048 and CVE-2026-32051" \
+    guidance "Upgrade OpenClaw to v2026.4.15+ to patch CVE-2026-32048, CVE-2026-32051, and later April 2026 issues" \
              "Disable session spawning if not required for your workflow:" \
              "  openclaw config set sessions.spawn_enabled false" \
              "Review operator.write permissions and ensure they match intended access policies:" \

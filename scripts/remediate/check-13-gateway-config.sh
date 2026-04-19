@@ -37,7 +37,7 @@ fi
 OC_VERSION=$(openclaw --version 2>/dev/null || echo "unknown")
 log "Current OpenClaw version: $OC_VERSION"
 if version_lt "$OC_VERSION" "2026.3.13"; then
-    log "[!] OpenClaw is below the current safe baseline (v2026.3.13+)"
+    log "[!] OpenClaw is below the current safe baseline (v2026.4.15+)"
     NEEDS_FIX=$((NEEDS_FIX + 1))
 fi
 
@@ -107,7 +107,7 @@ if [ $FIXED_COUNT -gt 0 ]; then
     finish
 else
     if version_lt "$OC_VERSION" "2026.3.13"; then
-        guidance "Update OpenClaw to v2026.3.13+ to pick up the latest March 2026 security fixes"
+        guidance "Update OpenClaw to v2026.4.15+ to pick up the latest April 2026 security fixes"
         exit 2
     fi
     exit 1

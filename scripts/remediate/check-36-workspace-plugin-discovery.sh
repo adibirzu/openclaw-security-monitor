@@ -21,7 +21,7 @@ for root in "${SEARCH_ROOTS[@]}"; do
         FOUND=true
         log "  CRITICAL: Workspace plugin directory found: $extdir"
         guidance "Review the repository containing $extdir and remove untrusted workspace plugins" \
-                 "Upgrade OpenClaw to v2026.3.13+ for GHSA-99qw-6mr3-36qr"
+                 "Upgrade OpenClaw to v2026.4.15+ for GHSA-99qw-6mr3-36qr and the current safe baseline"
     done < <(find "$root" -maxdepth 5 -type d -path "*/.openclaw/extensions" 2>/dev/null)
 done
 

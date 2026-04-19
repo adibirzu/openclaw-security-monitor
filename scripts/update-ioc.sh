@@ -34,6 +34,11 @@ GITHUB_REPO="$DEFAULT_GITHUB_REPO"
 CHECK_ONLY=false
 AUTO_MODE=false
 ALLOW_UNTRUSTED_SOURCE="${OPENCLAW_ALLOW_UNTRUSTED_IOC_SOURCE:-0}"
+TIMESTAMP_REFRESH_ALLOWED=true
+UPDATES_FOUND=0
+UPDATES_APPLIED=0
+PENDING_DIR=""
+PENDING_MARKERS=""
 
 # ============================================================
 # Argument parsing
@@ -60,6 +65,20 @@ mkdir -p "$LOG_DIR" "$IOC_DIR"
 
 log() { echo "[$TIMESTAMP] $1" | tee -a "$UPDATE_LOG"; }
 info() { echo "$1"; }
+
+create_pending_dir() {
+    if [ -z "$PENDING_DIR" ]; then
+        PENDING_DIR=$(mktemp -d "${TMPDIR:-/tmp}/openclaw-ioc.XXXXXX")
+    fi
+}
+
+cleanup() {
+    if [ -n "${PENDING_DIR:-}" ] && [ -d "$PENDING_DIR" ]; then
+        rm -rf "$PENDING_DIR"
+    fi
+}
+
+trap cleanup EXIT
 
 is_trusted_repo() {
     case "$1" in
@@ -101,6 +120,46 @@ validate_ioc_content() {
         return 1
     fi
     return 0
+}
+
+pending_path() {
+    if [ -n "$PENDING_DIR" ]; then
+        echo "$PENDING_DIR/$1"
+    fi
+}
+
+has_pending_update() {
+    [ -n "$PENDING_DIR" ] && [ -f "$PENDING_DIR/$1" ]
+}
+
+ensure_pending_record() {
+    local ioc_file="$1"
+    case "$PENDING_MARKERS" in
+        *"|$ioc_file|"*) ;;
+        *)
+            PENDING_UPDATES+=("$ioc_file")
+            PENDING_MARKERS="${PENDING_MARKERS}|$ioc_file|"
+            ;;
+    esac
+}
+
+stage_pending_update() {
+    local ioc_file="$1"
+    local content="$2"
+    create_pending_dir
+    ensure_pending_record "$ioc_file"
+    printf '%s\n' "$content" > "$(pending_path "$ioc_file")"
+}
+
+read_effective_ioc_file() {
+    local ioc_file="$1"
+    local pending_file
+    if has_pending_update "$ioc_file"; then
+        pending_file=$(pending_path "$ioc_file")
+        cat "$pending_file"
+    elif [ -f "$IOC_DIR/$ioc_file" ]; then
+        cat "$IOC_DIR/$ioc_file"
+    fi
 }
 
 if ! is_trusted_repo "$GITHUB_REPO" && [ "$ALLOW_UNTRUSTED_SOURCE" != "1" ]; then
@@ -147,13 +206,11 @@ fi
 echo "=== Checking upstream IOC database ==="
 
 IOC_FILES=("c2-ips.txt" "malicious-domains.txt" "file-hashes.txt" "malicious-publishers.txt" "malicious-skill-patterns.txt")
-UPDATES_FOUND=0
 
 # Track per-file diffs for summary
 declare -a DIFF_SUMMARIES=()
 # Track pending updates for interactive confirmation
 declare -a PENDING_UPDATES=()
-declare -A PENDING_CONTENT=() 2>/dev/null || true
 
 for ioc_file in "${IOC_FILES[@]}"; do
     echo -n "  Checking $ioc_file... "
@@ -197,10 +254,10 @@ for ioc_file in "${IOC_FILES[@]}"; do
                 echo "$REMOTE_CONTENT" > "$LOCAL_FILE"
                 log "Auto-updated $ioc_file (was $LOCAL_HASH, now $REMOTE_HASH)"
                 echo "    -> Auto-updated"
+                UPDATES_APPLIED=$((UPDATES_APPLIED + 1))
             else
                 # Interactive mode: stage the update for confirmation
-                PENDING_UPDATES+=("$ioc_file")
-                PENDING_CONTENT["$ioc_file"]="$REMOTE_CONTENT"
+                stage_pending_update "$ioc_file" "$REMOTE_CONTENT"
                 echo "    -> Pending (will confirm below)"
             fi
         else
@@ -211,39 +268,19 @@ for ioc_file in "${IOC_FILES[@]}"; do
         UPDATES_FOUND=$((UPDATES_FOUND + 1))
         NEW_LINES=$(echo "$REMOTE_CONTENT" | grep -v '^#' | grep -v '^$' | wc -l | tr -d ' ')
         DIFF_SUMMARIES+=("$ioc_file: NEW (+${NEW_LINES} entries)")
-        echo "$REMOTE_CONTENT" > "$LOCAL_FILE"
-        log "Downloaded new $ioc_file"
-        echo "    -> Downloaded"
+        if [ "$AUTO_MODE" = true ]; then
+            echo "$REMOTE_CONTENT" > "$LOCAL_FILE"
+            log "Downloaded new $ioc_file"
+            echo "    -> Downloaded"
+            UPDATES_APPLIED=$((UPDATES_APPLIED + 1))
+        else
+            stage_pending_update "$ioc_file" "$REMOTE_CONTENT"
+            echo "    -> Pending (will confirm below)"
+        fi
     fi
 done
 
 echo ""
-
-# ============================================================
-# Interactive confirmation for pending updates
-# ============================================================
-if [ "$AUTO_MODE" = false ] && [ "${#PENDING_UPDATES[@]}" -gt 0 ]; then
-    echo "=== Pending IOC Updates ==="
-    for pf in "${PENDING_UPDATES[@]}"; do
-        echo "  - $pf"
-    done
-    echo ""
-    printf "Apply these updates? [y/N] "
-    read -r answer
-    if [[ "$answer" =~ ^[Yy] ]]; then
-        for pf in "${PENDING_UPDATES[@]}"; do
-            LOCAL_FILE="$IOC_DIR/$pf"
-            cp "$LOCAL_FILE" "$LOCAL_FILE.bak" 2>/dev/null || true
-            echo "${PENDING_CONTENT[$pf]}" > "$LOCAL_FILE"
-            log "Updated $pf (user confirmed)"
-            echo "  -> Updated: $pf"
-        done
-    else
-        echo "  Skipped — no IOC files were modified."
-        log "User declined IOC updates"
-    fi
-    echo ""
-fi
 
 # ============================================================
 # 2. Fetch malicious publishers from ClawHub API
@@ -285,15 +322,20 @@ fetch_clawhub_publishers() {
     echo "OK ($remote_count publisher entries)"
 
     # Merge any new handles not already in local file
-    if [ -f "$pub_file" ]; then
-        local added=0
+    if [ -f "$pub_file" ] || [ "$AUTO_MODE" = false ] || has_pending_update "malicious-publishers.txt"; then
+        local current_content merged_content entry added
+        current_content=$(read_effective_ioc_file "malicious-publishers.txt")
+        merged_content="$current_content"
+        added=0
+
         while IFS= read -r handle; do
             [ -z "$handle" ] && continue
-            if ! grep -qF "$handle" "$pub_file" 2>/dev/null; then
-                if [ "$AUTO_MODE" = false ]; then
-                    echo "$handle|clawhub-api|$(date -u +"%Y-%m-%d")|Added via ClawHub API feed" >> "$pub_file"
+            if ! printf '%s\n' "$merged_content" | grep -qF "${handle}|" 2>/dev/null; then
+                entry="$handle|clawhub-api|$(date -u +"%Y-%m-%d")|Added via ClawHub API feed"
+                if [ -n "$merged_content" ]; then
+                    merged_content="${merged_content}"$'\n'"$entry"
                 else
-                    echo "$handle|clawhub-api|$(date -u +"%Y-%m-%d")|Added via ClawHub API feed" >> "$pub_file"
+                    merged_content="$entry"
                 fi
                 log "ClawHub feed: added new publisher handle: $handle"
                 added=$((added + 1))
@@ -304,6 +346,13 @@ fetch_clawhub_publishers() {
             echo "  -> Merged $added new publisher handle(s) into malicious-publishers.txt"
             DIFF_SUMMARIES+=("malicious-publishers.txt (ClawHub API): +$added new handles")
             UPDATES_FOUND=$((UPDATES_FOUND + 1))
+            if [ "$AUTO_MODE" = true ]; then
+                printf '%s\n' "$merged_content" > "$pub_file"
+                UPDATES_APPLIED=$((UPDATES_APPLIED + 1))
+            else
+                stage_pending_update "malicious-publishers.txt" "$merged_content"
+                echo "    -> Pending (will confirm below)"
+            fi
         else
             echo "  -> No new publisher handles to merge"
         fi
@@ -312,6 +361,34 @@ fetch_clawhub_publishers() {
 }
 
 fetch_clawhub_publishers
+
+# ============================================================
+# Interactive confirmation for pending updates
+# ============================================================
+if [ "$AUTO_MODE" = false ] && [ "${#PENDING_UPDATES[@]}" -gt 0 ]; then
+    echo "=== Pending IOC Updates ==="
+    for pf in "${PENDING_UPDATES[@]}"; do
+        echo "  - $pf"
+    done
+    echo ""
+    printf "Apply these updates? [y/N] "
+    read -r answer
+    if [[ "$answer" =~ ^[Yy] ]]; then
+        for pf in "${PENDING_UPDATES[@]}"; do
+            LOCAL_FILE="$IOC_DIR/$pf"
+            cp "$LOCAL_FILE" "$LOCAL_FILE.bak" 2>/dev/null || true
+            cat "$(pending_path "$pf")" > "$LOCAL_FILE"
+            log "Updated $pf (user confirmed)"
+            echo "  -> Updated: $pf"
+            UPDATES_APPLIED=$((UPDATES_APPLIED + 1))
+        done
+    else
+        echo "  Skipped — no IOC files were modified."
+        log "User declined IOC updates"
+        TIMESTAMP_REFRESH_ALLOWED=false
+    fi
+    echo ""
+fi
 
 # ============================================================
 # 3. Live threat feed: scan active network for new C2 indicators
@@ -405,14 +482,9 @@ echo ""
 # ============================================================
 # 5. Record update timestamp
 # ============================================================
-if [ "$UPDATES_FOUND" -gt 0 ]; then
+if [ "$TIMESTAMP_REFRESH_ALLOWED" = true ]; then
     echo "$TIMESTAMP" > "$TIMESTAMP_FILE"
     log "Timestamp recorded: $TIMESTAMP"
-else
-    # Refresh timestamp even when already up to date so --check stays accurate
-    if [ ! -f "$TIMESTAMP_FILE" ]; then
-        echo "$TIMESTAMP" > "$TIMESTAMP_FILE"
-    fi
 fi
 
 # ============================================================
@@ -433,13 +505,14 @@ echo ""
 # ============================================================
 echo "=== Summary ==="
 echo "  IOC files checked: ${#IOC_FILES[@]}"
-echo "  Updates applied  : $UPDATES_FOUND"
+echo "  Updates found    : $UPDATES_FOUND"
+echo "  Updates applied  : $UPDATES_APPLIED"
 echo "  Threats found    : $THREATS_FOUND"
 echo "  Last update      : $TIMESTAMP"
 echo ""
 
 if [ "$AUTO_MODE" = true ]; then
-    log "IOC auto-update complete: $UPDATES_FOUND updates, $THREATS_FOUND threats"
+    log "IOC auto-update complete: $UPDATES_APPLIED applied, $THREATS_FOUND threats"
     # In auto mode exit non-zero if threats found
     if [ "$THREATS_FOUND" -gt 0 ]; then
         exit 2
@@ -447,4 +520,4 @@ if [ "$AUTO_MODE" = true ]; then
     exit 0
 fi
 
-log "IOC update complete: $UPDATES_FOUND updates, $THREATS_FOUND threats"
+log "IOC update complete: $UPDATES_APPLIED applied, $THREATS_FOUND threats"

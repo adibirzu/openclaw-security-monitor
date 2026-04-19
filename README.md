@@ -8,11 +8,11 @@ In late January 2026, security researchers found that **12% of all ClawHub skill
 
 The primary campaign, ClawHavoc, delivered the Atomic Stealer (AMOS) macOS infostealer targeting crypto wallets, SSH credentials, and browser passwords. In February, Hudson Rock discovered **Vidar infostealer variants specifically targeting OpenClaw agent identities** — stealing openclaw.json, device.json, soul.md, and memory.md files.
 
-Meanwhile, CVE-2026-25253 demonstrated that a single malicious link could achieve full remote code execution on any OpenClaw instance through WebSocket hijacking — even those bound to localhost. The **ClawJacked** attack (Feb 26, Oasis Security) showed that malicious websites can brute-force localhost WebSocket passwords with no rate limiting. **CVE-2026-28363** (CVSS 9.9) revealed a critical safeBins bypass via GNU long-option abbreviations. In total, **60+ CVEs and 60+ GHSAs** have been disclosed including SSRF, exec bypass, ACP auto-approval bypass, webhook forgery, log poisoning, and more. The March 19-21 batch (CVE-2026-32013, CVE-2026-32014, CVE-2026-32025, CVE-2026-32042, CVE-2026-32048, CVE-2026-32051, CVE-2026-32055, CVE-2026-32056, CVE-2026-32064) added symlink traversal, sandbox escape, shell environment RCE, unauthenticated VNC observer access, and device identity/metadata spoofing.
+Meanwhile, CVE-2026-25253 demonstrated that a single malicious link could achieve full remote code execution on any OpenClaw instance through WebSocket hijacking — even those bound to localhost. The **ClawJacked** attack (Feb 26, Oasis Security) showed that malicious websites can brute-force localhost WebSocket passwords with no rate limiting. **CVE-2026-28363** (CVSS 9.9) revealed a critical safeBins bypass via GNU long-option abbreviations. In total, **60+ CVEs and 60+ GHSAs** have been disclosed including SSRF, exec bypass, ACP auto-approval bypass, webhook forgery, log poisoning, and more. The March 19-21 batch (CVE-2026-32013, CVE-2026-32014, CVE-2026-32025, CVE-2026-32042, CVE-2026-32048, CVE-2026-32051, CVE-2026-32055, CVE-2026-32056, CVE-2026-32064) added symlink traversal, sandbox escape, shell environment RCE, unauthenticated VNC observer access, and device identity/metadata spoofing. The April 16 wave added **Matrix room-control sender-auth bypass** (GHSA-2gvc-4f3c-2855), **webchat media local-root bypass** (GHSA-mr34-9552-qr95), **gateway SecretRef stale bearer auth** (GHSA-xmxx-7p24-h892), and **config.get redaction bypass** (GHSA-8372-7vhw-cm6q).
 
 **135,000+ instances** are exposed across 82 countries, with **12,812 exploitable via RCE**. Major security firms including CrowdStrike, Bitdefender, Palo Alto Networks, Cisco, and Kaspersky have issued advisories. Meta has banned OpenClaw from corporate devices.
 
-This project provides defense-in-depth monitoring for self-hosted OpenClaw installations. **Minimum safe version: v2026.3.21**.
+This project provides defense-in-depth monitoring for self-hosted OpenClaw installations. **Minimum safe version: v2026.4.15**.
 
 ## Features
 
@@ -62,7 +62,7 @@ crontab -l | { cat; echo "0 6 * * * $(pwd)/scripts/daily-scan-cron.sh"; } | cron
 ```
 openclaw-security-monitor/
   scripts/
-    scan.sh              # 41-point threat scanner (v5.0.0)
+    scan.sh              # 41-point threat scanner (v5.1.0)
     remediate.sh         # Orchestrator: scan + per-check remediation
     remediate/
       _common.sh         # Shared helpers (log, confirm, fix_perms)

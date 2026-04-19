@@ -33,7 +33,7 @@ if version_lt "$OC_VERSION" "2026.3.21"; then
     log "of arbitrary commands via allowlisted tools."
     log ""
     guidance \
-        "Upgrade OpenClaw to v2026.3.21+ to fix CVE-2026-28363 (CVSS 9.9)" \
+        "Upgrade OpenClaw to v2026.4.15+ to cover CVE-2026-28363 and the April 2026 advisory wave" \
         "Audit safeBins configuration: openclaw config get tools.exec.safeBins" \
         "Consider removing 'sort' from safeBins until patched"
     FOUND=true
@@ -55,7 +55,7 @@ if version_lt "$OC_VERSION" "2026.3.21"; then
     log "environment variable expansion."
     log ""
     guidance \
-        "Upgrade OpenClaw to v2026.3.21+ to fix CVE-2026-28463" \
+        "Upgrade OpenClaw to v2026.4.15+ to cover CVE-2026-28463 and later auth fixes" \
         "Audit safeBins for file-reading commands (head, tail, grep, cat, less, more)"
     FOUND=true
 fi
@@ -76,7 +76,7 @@ if version_lt "$OC_VERSION" "2026.3.21"; then
     log "fields into the request."
     log ""
     guidance \
-        "Upgrade OpenClaw to v2026.3.21+ to fix CVE-2026-28466"
+        "Upgrade OpenClaw to v2026.4.15+ to cover CVE-2026-28466 and later auth fixes"
     FOUND=true
 fi
 
@@ -94,7 +94,7 @@ if version_lt "$OC_VERSION" "2026.3.21"; then
         log "Exec approval integrity can be bypassed by rewritten scripts/wrappers."
         log ""
         guidance \
-            "Upgrade OpenClaw to v2026.3.21+ for GHSA-qc36-x95h-7j53, GHSA-xf99-j42q-5w5p, GHSA-rw39-5899-8mxp, GHSA-f8r2-vg7x-gh8m" \
+            "Upgrade OpenClaw to v2026.4.15+ for GHSA-qc36-x95h-7j53, GHSA-xf99-j42q-5w5p, GHSA-rw39-5899-8mxp, GHSA-f8r2-vg7x-gh8m, and the April 2026 rollup" \
             "Re-review stored approvals for tsx, jiti, node, bun, deno, python, bash, and similar script runners"
         FOUND=true
     fi
@@ -140,7 +140,7 @@ if [ "$FOUND" = true ]; then
     log ""
     log "  CVEs covered: CVE-2026-28363, CVE-2026-28463, CVE-2026-28466"
     log "  GHSAs covered: GHSA-qc36, GHSA-xf99, GHSA-rw39, GHSA-f8r2"
-    log "  Minimum safe version: v2026.3.21+"
+    log "  Minimum safe version: v2026.4.15+"
     FIXED=1  # signal to orchestrator that guidance was emitted
 else
     log "  Exec guardrails baseline acceptable"
