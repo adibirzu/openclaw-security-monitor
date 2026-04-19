@@ -52,6 +52,15 @@ node dashboard/server.js
 ./scripts/update-ioc.sh
 ```
 
+## Bundle Plugin
+
+This project is also publishable as a ClawHub bundle plugin.
+
+```bash
+# Install the bundle plugin variant
+openclaw plugins install clawhub:openclaw-security-monitor-bundle
+```
+
 **Optional persistence** (manual, not auto-installed):
 ```bash
 # Install daily cron (06:00 UTC) — requires explicit user action

@@ -1,6 +1,6 @@
 {
-  "name": "openclaw-security-monitor",
-  "version": "5.2.0",
+  "name": "openclaw-security-monitor-bundle",
+  "version": "5.2.1",
   "description": "Security monitoring, threat scanning, and remediation guidance for OpenClaw deployments.",
   "author": {
     "name": "Adrian Birzu",

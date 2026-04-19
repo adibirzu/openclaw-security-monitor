@@ -22,7 +22,7 @@ SKILL_NAME="openclaw-security-monitor"
 INSTALL_DIR="$SKILLS_DIR/$SKILL_NAME"
 
 echo "╔══════════════════════════════════════════════════════════════╗"
-echo "║       OpenClaw Security Monitor — Installer v5.2.0         ║"
+echo "║       OpenClaw Security Monitor — Installer v5.2.1         ║"
 echo "╚══════════════════════════════════════════════════════════════╝"
 echo ""
 
