@@ -1,5 +1,5 @@
 #!/bin/bash
-# OpenClaw Security Monitor - Enhanced Threat Scanner v5.3.0
+# OpenClaw Security Monitor - Enhanced Threat Scanner v5.3.1
 # https://github.com/adibirzu/openclaw-security-monitor
 #
 # 41-point security scanner (consolidated from 62). Detects: ClawHavoc AMOS
@@ -51,8 +51,8 @@ WORKSPACE_DIR="$OPENCLAW_DIR/workspace"
 LOG_DIR="$OPENCLAW_DIR/logs"
 LOG_FILE="$LOG_DIR/security-scan.log"
 TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-SCANNER_VERSION="5.3.0"
-SAFE_BASELINE="2026.4.23"
+SCANNER_VERSION="5.3.1"
+SAFE_BASELINE="2026.4.24"
 export PATH="$HOME/.local/bin:/opt/homebrew/opt/node@22/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
 
 CRITICAL=0
@@ -577,7 +577,7 @@ if command -v openclaw &>/dev/null; then
     OC_VERSION=$(run_with_timeout 5 openclaw --version 2>/dev/null || echo "unknown")
     log "  OpenClaw version: $OC_VERSION"
     if version_lt "$OC_VERSION" "$SAFE_BASELINE"; then
-        result_critical "OpenClaw version $OC_VERSION is below the current safe baseline (v$SAFE_BASELINE+) and misses the April 21-24 2026 security rollups"
+        result_critical "OpenClaw version $OC_VERSION is below the current safe baseline (v$SAFE_BASELINE+) and misses the April 21-25 2026 security rollups"
         GW_ISSUES=$((GW_ISSUES + 1))
     fi
 fi
@@ -1009,7 +1009,7 @@ if [ -n "$SETUP_API_HITS" ]; then
 fi
 
 if command -v openclaw &>/dev/null && [ -n "${OC_VERSION:-}" ] && [ "${OC_VERSION:-}" != "unknown" ]; then
-    if version_advisory "2026.4.23" "attacker-controlled setup-api.js can execute during env-key resolution (GHSA-r39h-4c2p-3jxp)"; then
+    if version_advisory "2026.4.24" "attacker-controlled setup-api.js can execute during env-key resolution (GHSA-r39h-4c2p-3jxp)"; then
         EXT_ISSUES=$((EXT_ISSUES + 1))
     fi
     if version_advisory "2026.4.10" "channel setup catalog can load untrusted workspace plugin shadows (GHSA-82qx-6vj7-p8m2)" "warn"; then
@@ -1143,7 +1143,7 @@ if command -v openclaw &>/dev/null; then
             AUTH20_ISSUES=$((AUTH20_ISSUES + 1))
         fi
 
-        if version_lt "$OC_VERSION" "2026.4.23"; then
+        if version_lt "$OC_VERSION" "2026.4.24"; then
             if [ -n "$GATEWAY_SECRET_REF" ]; then
                 result_critical "OpenClaw v$OC_VERSION: webhook SecretRef route secrets can remain valid after rotation/reload (GHSA-q8ff-7ffm-m3r9). Rotate secrets after update to v$SAFE_BASELINE+"
             else

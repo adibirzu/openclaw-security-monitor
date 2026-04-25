@@ -36,8 +36,8 @@ fi
 
 OC_VERSION=$(openclaw --version 2>/dev/null || echo "unknown")
 log "Current OpenClaw version: $OC_VERSION"
-if version_lt "$OC_VERSION" "2026.4.23"; then
-    log "[!] OpenClaw is below the current safe baseline (v2026.4.23+)"
+if version_lt "$OC_VERSION" "2026.4.24"; then
+    log "[!] OpenClaw is below the current safe baseline (v2026.4.24+)"
     NEEDS_FIX=$((NEEDS_FIX + 1))
 fi
 
@@ -57,8 +57,8 @@ if [ "$DRY_RUN" = true ]; then
     if [[ "$AUTH_VALUE" == "none" ]] || [[ "$AUTH_VALUE" == "off" ]]; then
         log "  - Set gateway.auth.mode to token"
     fi
-    if version_lt "$OC_VERSION" "2026.4.23"; then
-        log "  - Update OpenClaw to v2026.4.23 or newer"
+    if version_lt "$OC_VERSION" "2026.4.24"; then
+        log "  - Update OpenClaw to v2026.4.24 or newer"
     fi
     exit 2
 fi
@@ -106,8 +106,8 @@ if [ $FIXED_COUNT -gt 0 ]; then
     log "  openclaw restart"
     finish
 else
-    if version_lt "$OC_VERSION" "2026.4.23"; then
-        guidance "Update OpenClaw to v2026.4.23+ to pick up the latest April 2026 security fixes, including setup-api.js cwd execution, webhook SecretRef replay, and gateway config mutation guard fixes"
+    if version_lt "$OC_VERSION" "2026.4.24"; then
+        guidance "Update OpenClaw to v2026.4.24+ to pick up the latest April 2026 security fixes, including setup-api.js cwd execution, webhook SecretRef replay, and gateway config mutation guard fixes"
         exit 2
     fi
     exit 1

@@ -59,10 +59,10 @@ done
 
 if command -v openclaw &>/dev/null; then
     OC_VERSION=$(openclaw --version 2>/dev/null || echo "unknown")
-    if version_lt "$OC_VERSION" "2026.4.23"; then
+    if version_lt "$OC_VERSION" "2026.4.24"; then
         FOUND_ISSUES=true
         guidance \
-            "Upgrade OpenClaw to v2026.4.23+ for MCP stdio env filtering, loopback owner-context bearer derivation, bundled MCP/LSP tool-policy enforcement, and ACP child-session envelope fixes." \
+            "Upgrade OpenClaw to v2026.4.24+ for MCP stdio env filtering, loopback owner-context bearer derivation, bundled MCP/LSP tool-policy enforcement, and ACP child-session envelope fixes." \
             "Review all MCP server configs for workspace-provided env values and unexpected tool schemas."
         FIXED=$((FIXED + 1))
     fi

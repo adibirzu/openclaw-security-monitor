@@ -57,7 +57,7 @@ if [ "$NEEDS_UPDATE" = true ]; then
     guidance "Update OpenClaw to v2026.2.19+ to fix SSRF vulnerabilities"
 fi
 
-if version_lt "$OC_VERSION" "2026.4.23"; then
+if version_lt "$OC_VERSION" "2026.4.24"; then
     log ""
     log "=========================================="
     log "WARNING: April 2026 SSRF/media hardening rollup"
@@ -68,7 +68,7 @@ if version_lt "$OC_VERSION" "2026.4.23"; then
     log "media, and browser navigation policy enforcement."
     log ""
     guidance \
-        "Update OpenClaw to v2026.4.23+ for the current safe baseline" \
+        "Update OpenClaw to v2026.4.24+ for the current safe baseline" \
         "Audit channel media integrations for internal URLs, metadata endpoints, and local file references" \
         "Disable unused QQBot/Zalo/browser media integrations until patched"
 fi

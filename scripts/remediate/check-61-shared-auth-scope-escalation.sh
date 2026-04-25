@@ -17,13 +17,13 @@ FOUND=false
 if version_lt "$OC_VERSION" "2026.3.13"; then
     if [ "$AUTH_MODE" = "password" ] || [ "$AUTH_MODE" = "token" ]; then
         log "  CRITICAL: Shared-auth scope escalation may be reachable on v$OC_VERSION"
-        guidance "Upgrade OpenClaw to v2026.4.23+ for GHSA-rqpp-rjj8-7wv8 and the current safe baseline" \
+        guidance "Upgrade OpenClaw to v2026.4.24+ for GHSA-rqpp-rjj8-7wv8 and the current safe baseline" \
                  "Rotate shared gateway tokens/passwords after upgrading"
         FOUND=true
     fi
     if [ -n "$PAIRING_MODE" ] && [ "$PAIRING_MODE" != "false" ] && [ "$PAIRING_MODE" != "off" ]; then
         log "  CRITICAL: Pairing-scope privilege escalation may be reachable on v$OC_VERSION"
-        guidance "Upgrade OpenClaw to v2026.4.23+ for GHSA-4jpw-hj22-2xmc, GHSA-63f5-hhc7-cx6p, and the current safe baseline" \
+        guidance "Upgrade OpenClaw to v2026.4.24+ for GHSA-4jpw-hj22-2xmc, GHSA-63f5-hhc7-cx6p, and the current safe baseline" \
                  "Re-issue pending pairing requests after upgrading"
         FOUND=true
     fi

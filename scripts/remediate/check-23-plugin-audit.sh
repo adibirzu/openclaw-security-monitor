@@ -43,8 +43,8 @@ while IFS= read -r -d '' setup_file; do
     log "CRITICAL: Extension '$ext_name' contains setup-api.js"
     log "  File: $setup_file"
     guidance \
-        "OpenClaw versions before v2026.4.23 could execute attacker-controlled setup-api.js during env-key resolution (GHSA-r39h-4c2p-3jxp)." \
-        "Upgrade OpenClaw to v2026.4.23+." \
+        "OpenClaw versions before v2026.4.24 could execute attacker-controlled setup-api.js during env-key resolution (GHSA-r39h-4c2p-3jxp)." \
+        "Upgrade OpenClaw to v2026.4.24+." \
         "Review this file and remove/quarantine the extension if it was not intentionally installed."
     SUSPICIOUS_FOUND=$((SUSPICIOUS_FOUND + 1))
 done < <(find "$EXTENSIONS_DIR" -type f -name "setup-api.js" -print0 2>/dev/null)
@@ -56,7 +56,7 @@ while IFS= read -r -d '' env_file; do
         log "WARNING: Extension '$ext_name' dotenv overrides OpenClaw/runtime/connector env keys"
         log "  File: $env_file"
         guidance \
-            "OpenClaw versions before v2026.4.23 contain multiple dotenv/env override fixes." \
+            "OpenClaw versions before v2026.4.24 contain multiple dotenv/env override fixes." \
             "Review and remove unsafe OPENCLAW_*, connector host, runtime-control, and startup env overrides."
         SUSPICIOUS_FOUND=$((SUSPICIOUS_FOUND + 1))
     fi

@@ -280,13 +280,13 @@ Combined with persistent memory (SOUL.md, MEMORY.md), these create compounding r
 | Logs | Log poisoning detection | Header sanitization, injection patterns |
 | SSRF | Webhook/cron targets | Internal/metadata endpoint detection |
 | Auth | Brute-force resistance | Rate limiting, password strength audit |
-| CVE | Version compliance | Minimum v2026.4.23 enforcement |
+| CVE | Version compliance | Minimum v2026.4.24 enforcement |
 | Browser | CDP/Bridge auth | Port listening, auth mode, version checks |
 | Archives | TAR extraction | Path validation, traversal detection |
 
 ## Hardening Recommendations
 
-1. **Update OpenClaw to v2026.4.23+** (current safe baseline; April 21-24, 2026 advisories are fixed in v2026.4.23)
+1. **Update OpenClaw to v2026.4.24+** (current safe baseline; April 21-25, 2026 advisories are fixed in v2026.4.24)
 2. Set `gateway.auth.mode` to `token` (never `none`)
 3. Bind gateway to `loopback` not `lan`
 4. Set file permissions to 600 on configs
@@ -313,7 +313,7 @@ Combined with persistent memory (SOUL.md, MEMORY.md), these create compounding r
 25. **Update to v2026.2.13+** for browser control path traversal and webhook DoS fixes (CVE-2026-28462, CVE-2026-28478)
 26. **Update to v2026.2.14+** for exec shell expansion, approval injection, TAR traversal, fetchWithGuard fixes
 27. **Update to v2026.2.15+** for git pre-commit hook command injection fix (CVE-2026-28484, CVSS 9.3)
-28. **Update to v2026.4.23+** for the current safe baseline, including the March and April 2026 advisory waves
+28. **Update to v2026.4.24+** for the current safe baseline, including the March and April 2026 advisory waves
 29. **Verify downloads** — never trust Bing/Google AI search results for OpenClaw installers; only use official GitHub (Huntress advisory)
 30. **Audit head/tail/grep in safeBins** — these can read arbitrary files via glob patterns on unpatched versions (CVE-2026-28463)
 
