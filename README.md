@@ -1826,3 +1826,7 @@ IOC updates are welcome. To add new indicators:
 ## License
 
 MIT
+
+## Download History
+
+[![Download History](https://skill-history.com/chart/adibirzu/openclaw-security-monitor.svg)](https://skill-history.com/adibirzu/openclaw-security-monitor)
