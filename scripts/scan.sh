@@ -1,5 +1,5 @@
 #!/bin/bash
-# OpenClaw Security Monitor - Enhanced Threat Scanner v5.3.1
+# OpenClaw Security Monitor - Enhanced Threat Scanner v5.3.2
 # https://github.com/adibirzu/openclaw-security-monitor
 #
 # 41-point security scanner (consolidated from 62). Detects: ClawHavoc AMOS
@@ -51,7 +51,7 @@ WORKSPACE_DIR="$OPENCLAW_DIR/workspace"
 LOG_DIR="$OPENCLAW_DIR/logs"
 LOG_FILE="$LOG_DIR/security-scan.log"
 TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-SCANNER_VERSION="5.3.1"
+SCANNER_VERSION="5.3.2"
 SAFE_BASELINE="2026.4.24"
 export PATH="$HOME/.local/bin:/opt/homebrew/opt/node@22/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
 
@@ -1377,13 +1377,26 @@ header 26 "Checking PATH hijacking and command resolution..."
 
 PATH26_ISSUES=0
 
+is_trusted_path_dir() {
+    local dir="$1"
+    case "$dir" in
+        /bin|/usr/bin|/sbin|/usr/sbin|/usr/local/bin|/usr/local/sbin|/opt/homebrew/bin|/opt/homebrew/sbin|/opt/homebrew/opt/*/bin|/opt/homebrew/opt/*/sbin)
+            return 0
+            ;;
+        "$HOME/bin"|"$HOME/.local/bin"|"$HOME/.cargo/bin"|"$HOME/go/bin"|"$HOME/Library/pnpm")
+            return 0
+            ;;
+    esac
+    return 1
+}
+
 # Check for writable directories early in PATH with command shadowing (was check 37)
 IFS=':' read -ra PATH_DIRS <<< "$PATH"
 for PDIR in "${PATH_DIRS[@]}"; do
     if [ -d "$PDIR" ] && [ -w "$PDIR" ]; then
-        case "$PDIR" in
-            "$HOME/bin"|"$HOME/.local/bin"|"$HOME/.cargo/bin"|"$HOME/go/bin") continue ;;
-        esac
+        if is_trusted_path_dir "$PDIR"; then
+            continue
+        fi
         for CMD in node python3 bash curl git ssh openclaw; do
             if [ -f "$PDIR/$CMD" ] && [ -x "$PDIR/$CMD" ]; then
                 SYS_BIN=$(which -a "$CMD" 2>/dev/null | tail -1)
@@ -1398,7 +1411,7 @@ done
 
 # Check for planted binaries in workspace
 if [ -d "$WORKSPACE_DIR" ]; then
-    PLANTED=$(find "$WORKSPACE_DIR" -maxdepth 3 -type f -name "node" -o -name "python3" -o -name "bash" -o -name "curl" -o -name "git" 2>/dev/null | head -5)
+    PLANTED=$(find "$WORKSPACE_DIR" -maxdepth 3 -type f \( -name "node" -o -name "python3" -o -name "bash" -o -name "curl" -o -name "git" \) 2>/dev/null | head -5)
     if [ -n "$PLANTED" ]; then
         while IFS= read -r PBIN; do
             if [ -x "$PBIN" ]; then
@@ -1428,6 +1441,9 @@ for PDIR610 in "${P610_DIRS[@]}"; do
         fi
     done
     if [ "$FOUND_SYSTEM" = false ] && [ -d "$PDIR610" ]; then
+        if is_trusted_path_dir "$PDIR610"; then
+            continue
+        fi
         DIR_PERMS=$(stat -f "%Lp" "$PDIR610" 2>/dev/null || stat -c "%a" "$PDIR610" 2>/dev/null || echo "")
         if [ -n "$DIR_PERMS" ]; then
             case "$DIR_PERMS" in

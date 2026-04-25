@@ -2,7 +2,7 @@
 name: openclaw-security-monitor
 description: Proactive security monitoring, threat scanning, and auto-remediation for OpenClaw deployments
 tags: [security, scan, remediation, monitoring, threat-detection, hardening]
-version: 5.3.1
+version: 5.3.2
 author: Adrian Birzu
 user-invocable: true
 disable-model-invocation: true

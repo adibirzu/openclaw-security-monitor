@@ -74,7 +74,7 @@ openclaw-security-monitor/
   .codex-plugin/
     plugin.json          # Bundle-plugin manifest for ClawHub/OpenClaw plugin publishing
   scripts/
-    scan.sh              # 41-point threat scanner (v5.3.1)
+    scan.sh              # 41-point threat scanner (v5.3.2)
     remediate.sh         # Orchestrator: scan + per-check remediation
     remediate/
       _common.sh         # Shared helpers (log, confirm, fix_perms)

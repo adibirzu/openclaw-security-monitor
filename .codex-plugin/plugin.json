@@ -1,6 +1,6 @@
 {
   "name": "openclaw-security-monitor-bundle",
-  "version": "5.3.1",
+  "version": "5.3.2",
   "description": "Security monitoring, threat scanning, and remediation guidance for OpenClaw deployments through the April 2026 OpenClaw advisory rollups.",
   "author": {
     "name": "Adrian Birzu",
@@ -23,7 +23,7 @@
   "interface": {
     "displayName": "OpenClaw Security Monitor",
     "shortDescription": "Scan OpenClaw for current threats, unsafe config, and vulnerable versions.",
-    "longDescription": "Bundle plugin that ships the OpenClaw Security Monitor skill, threat IOCs, dashboard assets, ClawHub skill scanner, and remediation scripts for hardened OpenClaw deployments. v5.3.1 updates coverage for the April 21-25 2026 OpenClaw advisories, including setup-api.js cwd execution, webhook SecretRef replay, gateway config mutation guard bypasses, dotenv connector/runtime overrides, MCP owner-context issues, and OpenShell FS bridge escapes.",
+    "longDescription": "Bundle plugin that ships the OpenClaw Security Monitor skill, threat IOCs, dashboard assets, ClawHub skill scanner, and remediation scripts for hardened OpenClaw deployments. v5.3.2 updates coverage for the April 21-25 2026 OpenClaw advisories, including setup-api.js cwd execution, webhook SecretRef replay, gateway config mutation guard bypasses, dotenv connector/runtime overrides, MCP owner-context issues, and OpenShell FS bridge escapes.",
     "developerName": "Adrian Birzu",
     "category": "Security",
     "capabilities": [
