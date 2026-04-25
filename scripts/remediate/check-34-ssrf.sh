@@ -57,6 +57,22 @@ if [ "$NEEDS_UPDATE" = true ]; then
     guidance "Update OpenClaw to v2026.2.19+ to fix SSRF vulnerabilities"
 fi
 
+if version_lt "$OC_VERSION" "2026.4.23"; then
+    log ""
+    log "=========================================="
+    log "WARNING: April 2026 SSRF/media hardening rollup"
+    log "=========================================="
+    log ""
+    log "Recent OpenClaw advisories fixed SSRF and local-media read gaps in"
+    log "QQBot, Zalo, browser/CDP profile creation, trusted-proxy assistant"
+    log "media, and browser navigation policy enforcement."
+    log ""
+    guidance \
+        "Update OpenClaw to v2026.4.23+ for the current safe baseline" \
+        "Audit channel media integrations for internal URLs, metadata endpoints, and local file references" \
+        "Disable unused QQBot/Zalo/browser media integrations until patched"
+fi
+
 # Audit cron config for internal/metadata targets
 CRON_CONFIG=$(openclaw config get cron 2>/dev/null || echo "")
 if echo "$CRON_CONFIG" | grep -qiE "169\.254\.|127\.0\.0\.|10\.|172\.(1[6-9]|2[0-9]|3[01])\.|192\.168\.|metadata\.google|metadata\.aws" 2>/dev/null; then

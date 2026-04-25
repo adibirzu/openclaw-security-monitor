@@ -26,6 +26,7 @@ const LOGS = path.join(OPENCLAW, 'logs');
 const IOC_DIR = path.resolve(__dirname, '..', 'ioc');
 const DASHBOARD_DIR = __dirname;
 const startTime = Date.now();
+const MAX_TEXT_READ_BYTES = 512 * 1024;
 
 // Security headers
 const SEC_HEADERS = {
@@ -40,9 +41,21 @@ function json(res, data, status = 200) {
   res.end(JSON.stringify(data));
 }
 
-function readFileSafe(filePath) {
+function readFileSafe(filePath, maxBytes = MAX_TEXT_READ_BYTES) {
   try {
-    return fs.readFileSync(filePath, 'utf-8');
+    const stats = fs.statSync(filePath);
+    if (stats.size <= maxBytes) {
+      return fs.readFileSync(filePath, 'utf-8');
+    }
+
+    const fd = fs.openSync(filePath, 'r');
+    try {
+      const buffer = Buffer.alloc(maxBytes);
+      fs.readSync(fd, buffer, 0, maxBytes, stats.size - maxBytes);
+      return buffer.toString('utf-8');
+    } finally {
+      fs.closeSync(fd);
+    }
   } catch {
     return null;
   }
@@ -172,7 +185,7 @@ function getSkillsList() {
 // ─── Route Handler ──────────────────────────────────────────────────────────
 
 async function handleRequest(req, res) {
-  const parsedUrl = new URL(req.url, `http://${req.headers.host}`);
+  const parsedUrl = new URL(req.url || '/', 'http://127.0.0.1');
   const route = parsedUrl.pathname;
   const method = req.method;
 

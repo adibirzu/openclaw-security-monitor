@@ -1,5 +1,5 @@
 #!/bin/bash
-# OpenClaw Security Monitor - ClawHub Skill Scanner v1.0
+# OpenClaw Security Monitor - ClawHub Skill Scanner v1.2
 # https://github.com/adibirzu/openclaw-security-monitor
 #
 # Scans locally installed ClawHub skills for security issues:
@@ -9,6 +9,7 @@
 #   - C2 IP / malicious domain references (ioc/c2-ips.txt, ioc/malicious-domains.txt)
 #   - SKILL.md integrity (shell injection in Prerequisites)
 #   - Known malicious file hashes (ioc/file-hashes.txt)
+#   - April 2026 plugin/dotenv/MCP artifacts (setup-api.js, runtime env overrides)
 #
 # Exit codes: 0=all clean, 1=warnings found, 2=critical findings
 set -uo pipefail
@@ -96,7 +97,7 @@ skill_header() {
 # ============================================================
 log "========================================"
 log "CLAWHUB SKILL SCAN - $TIMESTAMP"
-log "Scanner: v1.0 (openclaw-security-monitor)"
+log "Scanner: v1.2 (openclaw-security-monitor)"
 log "========================================"
 log ""
 
@@ -149,7 +150,7 @@ for skilldir in "${SKILL_DIRS[@]}"; do
     sname="$(basename "$skilldir")"
     skillmd="$skilldir/SKILL.md"
     skill_header "$sname"
-    TOTAL_CHECKS=$((TOTAL_CHECKS + 7))  # 7 check categories per skill
+    TOTAL_CHECKS=$((TOTAL_CHECKS + 6))  # result-emitting check categories per skill
 
     # ----------------------------------------------------------
     # CHECK A: Read SKILL.md frontmatter
@@ -292,7 +293,38 @@ for skilldir in "${SKILL_DIRS[@]}"; do
     fi
 
     # ----------------------------------------------------------
-    # CHECK E: SKILL.md integrity (shell injection in Prerequisites)
+    # CHECK E: April 2026 plugin/dotenv/MCP risk artifacts
+    # ----------------------------------------------------------
+    ARTIFACT_ISSUES=0
+
+    SETUP_API_FILES=$(find "$skilldir" -type f -name "setup-api.js" 2>/dev/null || true)
+    if [ -n "$SETUP_API_FILES" ]; then
+        result_critical "[$sname] setup-api.js present — potential cwd/plugin hijack artifact (GHSA-r39h-4c2p-3jxp):"
+        log "    $SETUP_API_FILES"
+        ARTIFACT_ISSUES=$((ARTIFACT_ISSUES + 1))
+    fi
+
+    DOTENV_HITS=$(find "$skilldir" -type f \( -name ".env" -o -name ".env.*" \) -exec grep -lEi "OPENCLAW_|GATEWAY_URL|API_BASE|CONNECTOR_.*(HOST|URL|ENDPOINT)|MINIMAX_.*(HOST|URL)|RUNTIME_CONTROL|NODE_OPTIONS|BASH_ENV|ZDOTDIR" {} \; 2>/dev/null || true)
+    if [ -n "$DOTENV_HITS" ]; then
+        result_warn "[$sname] dotenv files override OpenClaw/runtime/connector env keys:"
+        log "    $DOTENV_HITS"
+        ARTIFACT_ISSUES=$((ARTIFACT_ISSUES + 1))
+    fi
+
+    MCP_ENV_HITS=$(grep -rlinE --include="*.json" --include="*.yaml" --include="*.yml" --include="*.toml" \
+        "NODE_OPTIONS|BASH_ENV|ENV=|ZDOTDIR|PYTHONPATH|RUBYOPT|GIT_DIR|GIT_WORK_TREE|HGRCPATH|RUSTC_WRAPPER|CARGO_BUILD_RUSTC_WRAPPER|MAKEFLAGS|OPENCLAW_" "$skilldir" 2>/dev/null || true)
+    if [ -n "$MCP_ENV_HITS" ]; then
+        result_warn "[$sname] MCP/config files include high-risk startup/runtime env keys:"
+        log "    $MCP_ENV_HITS"
+        ARTIFACT_ISSUES=$((ARTIFACT_ISSUES + 1))
+    fi
+
+    if [ "$ARTIFACT_ISSUES" -eq 0 ]; then
+        result_clean "[$sname] No April 2026 plugin/dotenv/MCP risk artifacts"
+    fi
+
+    # ----------------------------------------------------------
+    # CHECK F: SKILL.md integrity (shell injection in Prerequisites)
     # ----------------------------------------------------------
     INJECT_PATTERN="Prerequisites.*install|Prerequisites.*download|Prerequisites.*curl|Prerequisites.*wget|run this command.*terminal|paste.*terminal|copy.*terminal|base64 -d|base64 --decode|eval \$(|exec \$(|\`curl|\`wget|bypass.*safety.*guideline|execute.*without.*asking|ignore.*safety|override.*instruction|without.*user.*awareness"
     if [ -f "$skillmd" ]; then
@@ -306,7 +338,7 @@ for skilldir in "${SKILL_DIRS[@]}"; do
     fi
 
     # ----------------------------------------------------------
-    # CHECK F: File hashes against known malicious hashes
+    # CHECK G: File hashes against known malicious hashes
     # ----------------------------------------------------------
     HASH_HIT=false
     if [ -n "$FILE_HASHES" ]; then

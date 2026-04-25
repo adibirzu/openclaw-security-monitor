@@ -1,5 +1,5 @@
 #!/bin/bash
-# OpenClaw Security Monitor - Enhanced Threat Scanner v5.1.0
+# OpenClaw Security Monitor - Enhanced Threat Scanner v5.3.0
 # https://github.com/adibirzu/openclaw-security-monitor
 #
 # 41-point security scanner (consolidated from 62). Detects: ClawHavoc AMOS
@@ -27,10 +27,15 @@
 # Matrix room-control auth bypass (GHSA-2gvc-4f3c-2855), webchat media
 # local-root bypass (GHSA-mr34-9552-qr95), gateway SecretRef stale bearer
 # auth (GHSA-xmxx-7p24-h892), config.get redaction bypass
-# (GHSA-8372-7vhw-cm6q), persistence mechanisms, plugin threats, and more.
+# (GHSA-8372-7vhw-cm6q), setup-api.js cwd execution
+# (GHSA-r39h-4c2p-3jxp), webhook SecretRef route-secret replay
+# (GHSA-q8ff-7ffm-m3r9), unsafe model-driven gateway config writes
+# (GHSA-cwj3-vqpp-pmxr), dotenv connector/runtime env overrides,
+# MCP owner-context and tool-policy bypasses, OpenShell FS bridge escapes,
+# persistence mechanisms, plugin threats, and more.
 #
-# IOC database updated: 2026-04-19
-# Threat coverage: 60+ CVEs, 60+ GHSAs, 1,200+ malicious packages
+# IOC database updated: 2026-04-25
+# Threat coverage: 60+ CVEs, 100+ GHSAs, 1,200+ malicious packages
 #
 # Exit codes: 0=SECURE, 1=WARNINGS, 2=COMPROMISED
 set -uo pipefail
@@ -46,8 +51,8 @@ WORKSPACE_DIR="$OPENCLAW_DIR/workspace"
 LOG_DIR="$OPENCLAW_DIR/logs"
 LOG_FILE="$LOG_DIR/security-scan.log"
 TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-SCANNER_VERSION="5.1.0"
-SAFE_BASELINE="2026.4.15"
+SCANNER_VERSION="5.3.0"
+SAFE_BASELINE="2026.4.23"
 export PATH="$HOME/.local/bin:/opt/homebrew/opt/node@22/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
 
 CRITICAL=0
@@ -533,6 +538,17 @@ for SROOT in "${SCAN_ROOTS[@]}"; do
     done
 done
 
+PROMPT_OC_VERSION="${OC_VERSION:-}"
+if command -v openclaw &>/dev/null && [ -z "$PROMPT_OC_VERSION" ]; then
+    PROMPT_OC_VERSION=$(run_with_timeout 5 openclaw --version 2>/dev/null || echo "unknown")
+fi
+if [ -n "$PROMPT_OC_VERSION" ] && [ "$PROMPT_OC_VERSION" != "unknown" ]; then
+    if version_lt "$PROMPT_OC_VERSION" "2026.4.20"; then
+        result_warn "OpenClaw v$PROMPT_OC_VERSION predates April 2026 prompt-channel trust fixes for hooks, cron awareness, webhook wake events, collect-mode sender context, and channel-sourced metadata (GHSA-7g8c-cfr3-vqqr, GHSA-57r2-h2wj-g887, GHSA-jf56-mccx-5f3f, GHSA-jwrq-8g5x-5fhm). Update to v$SAFE_BASELINE+"
+        INJECT9_ISSUES=$((INJECT9_ISSUES + 1))
+    fi
+fi
+
 if [ "$INJECT9_ISSUES" -eq 0 ]; then
     result_clean "No prompt injection or instruction manipulation detected"
 fi
@@ -561,7 +577,7 @@ if command -v openclaw &>/dev/null; then
     OC_VERSION=$(run_with_timeout 5 openclaw --version 2>/dev/null || echo "unknown")
     log "  OpenClaw version: $OC_VERSION"
     if version_lt "$OC_VERSION" "$SAFE_BASELINE"; then
-        result_critical "OpenClaw version $OC_VERSION is below the current safe baseline (v$SAFE_BASELINE+) and misses the April 2026 security rollup"
+        result_critical "OpenClaw version $OC_VERSION is below the current safe baseline (v$SAFE_BASELINE+) and misses the April 21-24 2026 security rollups"
         GW_ISSUES=$((GW_ISSUES + 1))
     fi
 fi
@@ -797,6 +813,17 @@ if command -v openclaw &>/dev/null; then
         fi
         POL14_ISSUES=$((POL14_ISSUES + 1))
     fi
+
+    if [ -n "${OC_VERSION:-}" ] && [ "${OC_VERSION:-}" != "unknown" ]; then
+        if version_lt "$OC_VERSION" "2026.4.20"; then
+            result_warn "OpenClaw v$OC_VERSION predates channel policy fixes for Feishu DM classification, bundled MCP/LSP tool-policy enforcement, and media replay tool-policy context (GHSA-72q8-jcmc-97wx, GHSA-qrp5-gfw2-gxv4, GHSA-r77c-2cmr-7p47). Update to v$SAFE_BASELINE+"
+            POL14_ISSUES=$((POL14_ISSUES + 1))
+        fi
+        if version_lt "$OC_VERSION" "2026.4.21"; then
+            result_warn "OpenClaw v$OC_VERSION may allow wildcard channel senders to satisfy owner-enforced command checks (GHSA-c28g-vh7m-fm7v). Update to v$SAFE_BASELINE+"
+            POL14_ISSUES=$((POL14_ISSUES + 1))
+        fi
+    fi
 fi
 
 if [ "$POL14_ISSUES" -eq 0 ]; then
@@ -958,6 +985,38 @@ if [ -d "$EXT_DIR" ]; then
         done < <(find "$EXT_DIR" -mindepth 1 -maxdepth 1 -type d 2>/dev/null)
     fi
 fi
+
+SETUP_API_HITS=""
+PLUGIN_SCAN_ROOTS=("$WORKSPACE_DIR" "$(pwd)")
+PLUGIN_SEEN_ROOTS=""
+for PROOT in "${PLUGIN_SCAN_ROOTS[@]}"; do
+    [ -d "$PROOT" ] || continue
+    case "$PLUGIN_SEEN_ROOTS" in
+        *"|$PROOT|"*) continue ;;
+    esac
+    PLUGIN_SEEN_ROOTS="${PLUGIN_SEEN_ROOTS}|$PROOT|"
+    while IFS= read -r setup_file; do
+        [ -z "$setup_file" ] && continue
+        case "$setup_file" in
+            *"/$SELF_DIR_NAME/"*) continue ;;
+        esac
+        SETUP_API_HITS="${SETUP_API_HITS}\n  $setup_file"
+    done < <(find "$PROOT" -maxdepth 6 -type f -name "setup-api.js" 2>/dev/null | head -20)
+done
+if [ -n "$SETUP_API_HITS" ]; then
+    result_critical "Potential setup-api.js cwd/plugin hijack files found (GHSA-r39h-4c2p-3jxp):$SETUP_API_HITS"
+    EXT_ISSUES=$((EXT_ISSUES + 1))
+fi
+
+if command -v openclaw &>/dev/null && [ -n "${OC_VERSION:-}" ] && [ "${OC_VERSION:-}" != "unknown" ]; then
+    if version_advisory "2026.4.23" "attacker-controlled setup-api.js can execute during env-key resolution (GHSA-r39h-4c2p-3jxp)"; then
+        EXT_ISSUES=$((EXT_ISSUES + 1))
+    fi
+    if version_advisory "2026.4.10" "channel setup catalog can load untrusted workspace plugin shadows (GHSA-82qx-6vj7-p8m2)" "warn"; then
+        EXT_ISSUES=$((EXT_ISSUES + 1))
+    fi
+fi
+
 if [ "$EXT_ISSUES" -eq 0 ]; then
     result_clean "No suspicious plugins/extensions"
 fi
@@ -1074,6 +1133,25 @@ if command -v openclaw &>/dev/null; then
             AUTH20_ISSUES=$((AUTH20_ISSUES + 1))
         fi
 
+        if version_lt "$OC_VERSION" "2026.4.20"; then
+            result_warn "OpenClaw v$OC_VERSION predates April 21 route/auth fixes for trusted-proxy media scope, paired-device action scoping, webhook/control env mutation, and runtime-control dotenv overrides (GHSA-v8qf-fr4g-28p2, GHSA-xrq9-jm7v-g9h7, GHSA-7jm2-g593-4qrc, GHSA-hxvm-xjvf-93f3). Update to v$SAFE_BASELINE+"
+            AUTH20_ISSUES=$((AUTH20_ISSUES + 1))
+        fi
+
+        if version_lt "$OC_VERSION" "2026.4.22"; then
+            result_warn "OpenClaw v$OC_VERSION predates gateway UI auth, connector host dotenv, MCP bearer owner-context, OpenShell bridge, and ACP child-session envelope fixes (GHSA-93rg-2xm5-2p9v, GHSA-55cf-xx38-4p9p, GHSA-r6xh-pqhr-v4xh, GHSA-wppj-c6mr-83jj, GHSA-5h3g-6xhh-rg6p, GHSA-q3jj-46pq-826r). Update to v$SAFE_BASELINE+"
+            AUTH20_ISSUES=$((AUTH20_ISSUES + 1))
+        fi
+
+        if version_lt "$OC_VERSION" "2026.4.23"; then
+            if [ -n "$GATEWAY_SECRET_REF" ]; then
+                result_critical "OpenClaw v$OC_VERSION: webhook SecretRef route secrets can remain valid after rotation/reload (GHSA-q8ff-7ffm-m3r9). Rotate secrets after update to v$SAFE_BASELINE+"
+            else
+                result_warn "OpenClaw v$OC_VERSION predates webhook SecretRef route-secret replay and gateway config mutation guard fixes (GHSA-q8ff-7ffm-m3r9, GHSA-cwj3-vqpp-pmxr). Update to v$SAFE_BASELINE+"
+            fi
+            AUTH20_ISSUES=$((AUTH20_ISSUES + 1))
+        fi
+
         # Check if browser extension is enabled (required for the endpoints above)
         BROWSER_EXT=$(run_with_timeout 5 openclaw config get "browser.extension.enabled" 2>/dev/null || echo "")
         if [ "$BROWSER_EXT" = "true" ] && [ "$AUTH20_ISSUES" -gt 0 ]; then
@@ -1150,6 +1228,16 @@ if command -v openclaw &>/dev/null && [ -n "${OC_VERSION:-}" ] && [ "${OC_VERSIO
         if [ -n "$APPROVALS" ] && [ "$APPROVALS" != "[]" ] && [ "$APPROVALS" != "null" ]; then
             log "  Existing exec approval config present: review previously approved script-runner commands after upgrading"
         fi
+    fi
+
+    if version_lt "$OC_VERSION" "2026.4.12"; then
+        result_warn "OpenClaw v$OC_VERSION predates April exec hardening for env-argv shell-wrapper detection, empty approver lists, busybox/toybox applets, interpreter pipelines, and high-risk startup env denylisting (GHSA-j6c7-3h5x-99g9, GHSA-49cg-279w-m73x, GHSA-2cq5-mf3v-mx44, GHSA-fvx6-pj3r-5q4q, GHSA-vfp4-8x56-j7c5). Update to v$SAFE_BASELINE+"
+        EXEC21_ISSUES=$((EXEC21_ISSUES + 1))
+    fi
+
+    if version_lt "$OC_VERSION" "2026.4.22"; then
+        result_warn "OpenClaw v$OC_VERSION predates unquoted heredoc shell-expansion rejection in exec allowlist analysis (GHSA-x3h8-jrgh-p8jx). Update to v$SAFE_BASELINE+"
+        EXEC21_ISSUES=$((EXEC21_ISSUES + 1))
     fi
 fi
 
@@ -1260,6 +1348,22 @@ if [ -f "$MCP_CONFIG" ]; then
         log "  $MCP_INJECT"
         MCP_ISSUES=$((MCP_ISSUES + 1))
     fi
+    MCP_ENV=$(grep -iE "NODE_OPTIONS|BASH_ENV|ENV=|ZDOTDIR|PYTHONPATH|RUBYOPT|GIT_DIR|GIT_WORK_TREE|HGRCPATH|RUSTC_WRAPPER|CARGO_BUILD_RUSTC_WRAPPER|MAKEFLAGS|OPENCLAW_" "$MCP_CONFIG" 2>/dev/null | grep -v '^#' || true)
+    if [ -n "$MCP_ENV" ]; then
+        result_warn "MCP config includes high-risk startup/runtime env variables:"
+        log "  $MCP_ENV"
+        MCP_ISSUES=$((MCP_ISSUES + 1))
+    fi
+fi
+if command -v openclaw &>/dev/null && [ -n "${OC_VERSION:-}" ] && [ "${OC_VERSION:-}" != "unknown" ]; then
+    if version_lt "$OC_VERSION" "2026.4.20"; then
+        result_warn "OpenClaw v$OC_VERSION predates MCP stdio dangerous env filtering and bundled MCP/LSP tool-policy fixes (GHSA-mj59-h3q9-ghfh, GHSA-qrp5-gfw2-gxv4). Update to v$SAFE_BASELINE+"
+        MCP_ISSUES=$((MCP_ISSUES + 1))
+    fi
+    if version_lt "$OC_VERSION" "2026.4.22"; then
+        result_warn "OpenClaw v$OC_VERSION predates MCP loopback owner-context derivation from server-issued bearer tokens (GHSA-r6xh-pqhr-v4xh). Update to v$SAFE_BASELINE+"
+        MCP_ISSUES=$((MCP_ISSUES + 1))
+    fi
 fi
 if [ "$MCP_ISSUES" -eq 0 ]; then
     result_clean "MCP server configuration acceptable"
@@ -1364,6 +1468,15 @@ if command -v openclaw &>/dev/null && [ -n "${OC_VERSION:-}" ] && [ "${OC_VERSIO
         result_warn "Cron webhook targets internal/metadata endpoints (SSRF risk)"
         SSRF_ISSUES=$((SSRF_ISSUES + 1))
     fi
+
+    if version_lt "$OC_VERSION" "2026.4.20"; then
+        result_warn "OpenClaw v$OC_VERSION predates April SSRF hardening for QQBot media paths, browser CDP profile creation, trusted-proxy assistant media, and browser navigation policy (GHSA-c4qg-j8jg-42q5, GHSA-j4c5-89f5-f3pm, GHSA-v8qf-fr4g-28p2, GHSA-xq94-r468-qwgj, GHSA-53vx-pmqw-863c). Update to v$SAFE_BASELINE+"
+        SSRF_ISSUES=$((SSRF_ISSUES + 1))
+    fi
+    if version_lt "$OC_VERSION" "2026.4.22"; then
+        result_warn "OpenClaw v$OC_VERSION predates Zalo outbound photo URL SSRF guard enforcement (GHSA-2hh7-c75g-qj2r). Update to v$SAFE_BASELINE+"
+        SSRF_ISSUES=$((SSRF_ISSUES + 1))
+    fi
 fi
 if [ "$SSRF_ISSUES" -eq 0 ]; then
     result_clean "SSRF protections acceptable"
@@ -1397,6 +1510,10 @@ if command -v openclaw &>/dev/null && [ -n "${OC_VERSION:-}" ] && [ "${OC_VERSIO
 
     if version_lt "$OC_VERSION" "2026.4.15"; then
         result_warn "OpenClaw v$OC_VERSION predates the April 2026 browser snapshot/screenshot route fix and QMD memory_get canonical-path enforcement (GHSA-c4qm-58hj-j6pj, GHSA-f934-5rqf-xx47). Update to v2026.4.15+"
+        PTRAV28_ISSUES=$((PTRAV28_ISSUES + 1))
+    fi
+    if version_lt "$OC_VERSION" "2026.4.22"; then
+        result_warn "OpenClaw v$OC_VERSION predates OpenShell FS bridge read/write sandbox-mount pinning fixes (GHSA-wppj-c6mr-83jj, GHSA-5h3g-6xhh-rg6p). Update to v$SAFE_BASELINE+"
         PTRAV28_ISSUES=$((PTRAV28_ISSUES + 1))
     fi
 fi
@@ -1497,6 +1614,26 @@ if [ -d "$SKILLS_DIR" ]; then
     done < <(find "$SKILLS_DIR" -mindepth 1 -maxdepth 1 -type d 2>/dev/null)
 fi
 
+if [ -d "$WORKSPACE_DIR" ]; then
+    DOTENV_OVERRIDE_HITS=$(find "$WORKSPACE_DIR" -maxdepth 5 -type f \( -name ".env" -o -name ".env.*" \) -not -path "*/$SELF_DIR_NAME/*" -exec grep -lEi "OPENCLAW_|GATEWAY_URL|API_BASE|CONNECTOR_.*(HOST|URL|ENDPOINT)|MINIMAX_.*(HOST|URL)|RUNTIME_CONTROL|NODE_OPTIONS|BASH_ENV|ZDOTDIR" {} \; 2>/dev/null | head -20 || true)
+    if [ -n "$DOTENV_OVERRIDE_HITS" ]; then
+        result_warn "Workspace dotenv files contain OpenClaw/runtime/connector override keys:"
+        log "$DOTENV_OVERRIDE_HITS"
+        ENV_OVERRIDE_ISSUES=$((ENV_OVERRIDE_ISSUES + 1))
+    fi
+fi
+
+if command -v openclaw &>/dev/null && [ -n "${OC_VERSION:-}" ] && [ "${OC_VERSION:-}" != "unknown" ]; then
+    if version_lt "$OC_VERSION" "2026.4.20"; then
+        result_warn "OpenClaw v$OC_VERSION predates workspace dotenv fixes for runtime-control and MiniMax host override keys (GHSA-hxvm-xjvf-93f3, GHSA-h2vw-ph2c-jvwf, GHSA-7wv4-cc7p-jhxc). Update to v$SAFE_BASELINE+"
+        ENV_OVERRIDE_ISSUES=$((ENV_OVERRIDE_ISSUES + 1))
+    fi
+    if version_lt "$OC_VERSION" "2026.4.22"; then
+        result_warn "OpenClaw v$OC_VERSION predates connector endpoint-host dotenv override blocking (GHSA-55cf-xx38-4p9p). Update to v$SAFE_BASELINE+"
+        ENV_OVERRIDE_ISSUES=$((ENV_OVERRIDE_ISSUES + 1))
+    fi
+fi
+
 if [ "$ENV_OVERRIDE_ISSUES" -eq 0 ]; then
     result_clean "No suspicious skill env overrides found"
 fi
@@ -1537,6 +1674,15 @@ if command -v openclaw &>/dev/null && [ -n "${OC_VERSION:-}" ] && [ "${OC_VERSIO
             result_critical "OpenClaw $OC_VERSION may allow pairing-scoped credentials to escalate privileges (GHSA-4jpw, GHSA-63f5)"
             PRIV32_ISSUES=$((PRIV32_ISSUES + 1))
         fi
+    fi
+
+    if version_lt "$OC_VERSION" "2026.4.20"; then
+        result_warn "OpenClaw v$OC_VERSION predates paired-device action scoping and protected operator-config mutation fixes (GHSA-xrq9-jm7v-g9h7, GHSA-7jm2-g593-4qrc, GHSA-5wj5-87vq-39xm). Update to v$SAFE_BASELINE+"
+        PRIV32_ISSUES=$((PRIV32_ISSUES + 1))
+    fi
+    if version_lt "$OC_VERSION" "2026.4.22"; then
+        result_warn "OpenClaw v$OC_VERSION predates ACP child-session security envelope inheritance enforcement (GHSA-q3jj-46pq-826r). Update to v$SAFE_BASELINE+"
+        PRIV32_ISSUES=$((PRIV32_ISSUES + 1))
     fi
 fi
 

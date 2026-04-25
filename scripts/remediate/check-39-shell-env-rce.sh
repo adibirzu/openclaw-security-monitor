@@ -17,7 +17,7 @@ if version_lt "$OC_VERSION" "2026.3.21"; then
     log "  CRITICAL: OpenClaw version $OC_VERSION is vulnerable to shell environment RCE"
     log "    CVE-2026-32056 — HOME/ZDOTDIR injection in system.run enables arbitrary code execution"
     log "    CVE-2026-27566 — env/wrapper binary unwrapping allows substitution of trusted binaries"
-    guidance "Upgrade OpenClaw to v2026.4.15+ to patch CVE-2026-32056, CVE-2026-27566, and later April 2026 issues" \
+    guidance "Upgrade OpenClaw to v2026.4.23+ to patch CVE-2026-32056, CVE-2026-27566, and later April 2026 issues" \
              "Ensure ZDOTDIR is not overridden in your environment or OpenClaw config:" \
              "  echo \$ZDOTDIR  # should be empty or point to a trusted path" \
              "Verify shell binaries resolve to system paths and have not been replaced:" \

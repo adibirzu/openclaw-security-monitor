@@ -1,7 +1,7 @@
 {
   "name": "openclaw-security-monitor-bundle",
-  "version": "5.2.1",
-  "description": "Security monitoring, threat scanning, and remediation guidance for OpenClaw deployments.",
+  "version": "5.3.0",
+  "description": "Security monitoring, threat scanning, and remediation guidance for OpenClaw deployments through the April 2026 OpenClaw advisory rollups.",
   "author": {
     "name": "Adrian Birzu",
     "url": "https://github.com/adibirzu"
@@ -14,14 +14,16 @@
     "security",
     "monitoring",
     "threat-detection",
+    "vulnerability-scanning",
+    "mcp-security",
     "clawhub",
     "bundle-plugin"
   ],
   "skills": "./",
   "interface": {
     "displayName": "OpenClaw Security Monitor",
-    "shortDescription": "Scan OpenClaw for known threats and unsafe configuration.",
-    "longDescription": "Bundle plugin that ships the OpenClaw Security Monitor skill, threat IOCs, dashboard assets, and remediation scripts for hardened OpenClaw deployments.",
+    "shortDescription": "Scan OpenClaw for current threats, unsafe config, and vulnerable versions.",
+    "longDescription": "Bundle plugin that ships the OpenClaw Security Monitor skill, threat IOCs, dashboard assets, ClawHub skill scanner, and remediation scripts for hardened OpenClaw deployments. v5.3.0 updates coverage for the April 21-24 2026 OpenClaw advisories, including setup-api.js cwd execution, webhook SecretRef replay, gateway config mutation guard bypasses, dotenv connector/runtime overrides, MCP owner-context issues, and OpenShell FS bridge escapes.",
     "developerName": "Adrian Birzu",
     "category": "Security",
     "capabilities": [
@@ -33,7 +35,8 @@
     "defaultPrompt": [
       "Run a full OpenClaw security scan.",
       "Check whether my OpenClaw setup is exposed.",
-      "Review my skills for known malicious indicators."
+      "Review my skills for known malicious indicators.",
+      "Check whether my OpenClaw version is below the current safe baseline."
     ],
     "brandColor": "#0F766E"
   }

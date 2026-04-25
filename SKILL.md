@@ -2,7 +2,7 @@
 name: openclaw-security-monitor
 description: Proactive security monitoring, threat scanning, and auto-remediation for OpenClaw deployments
 tags: [security, scan, remediation, monitoring, threat-detection, hardening]
-version: 5.2.1
+version: 5.3.0
 author: Adrian Birzu
 user-invocable: true
 disable-model-invocation: true
@@ -23,7 +23,7 @@ metadata:
 
 # Security Monitor
 
-Real-time security monitoring with threat intelligence from ClawHavoc research, daily automated scans, web dashboard, and Telegram alerting for OpenClaw.
+Real-time security monitoring with threat intelligence from ClawHavoc research, the April 2026 OpenClaw advisory rollups, daily automated scans, web dashboard, and Telegram alerting for OpenClaw.
 
 ## Commands
 Note: Replace `<skill-dir>` with the actual folder name where this skill is installed (commonly `openclaw-security-monitor` or `security-monitor`).
@@ -38,30 +38,30 @@ Run a comprehensive 41-point security scan:
 6. Curl-pipe / download attacks
 7. File & credential permission audit (config files, credentials dir, sessions)
 8. Skill integrity hash verification
-9. AI prompt injection & instruction manipulation (SKILL.md injection, memory poisoning, MCP tool poisoning, rules file backdoor)
+9. AI prompt injection & instruction manipulation (SKILL.md injection, memory poisoning, MCP tool poisoning, rules file backdoor, trusted prompt-channel downgrade fixes)
 10. Gateway security configuration audit
 11. WebSocket security (CVE-2026-25253, ClawJacked, device identity skip, CSWSH)
 12. Known malicious publisher detection
 13. Credential leakage & plaintext secrets (env access, hardcoded API keys, config.get redaction bypass GHSA-8372)
-14. DM, tool & sandbox policies (open DM, elevated tools, disabled sandbox, Matrix room-control bypass GHSA-2gvc)
+14. DM, tool & sandbox policies (open DM, elevated tools, disabled sandbox, Matrix room-control bypass GHSA-2gvc, wildcard owner command and bundled MCP/LSP tool-policy bypasses)
 15. mDNS/Bonjour exposure detection
 16. Persistence mechanism scan (LaunchAgents, crontabs, systemd)
 17. Log security & poisoning (redaction, ANSI injection, header injection)
-18. Plugin/extension security audit
+18. Plugin/extension security audit (including setup-api.js cwd/plugin hijack GHSA-r39h)
 19. Docker container security (root, socket mount, privileged mode)
-20. Authentication & route security (proxy bypass, CDP auth, browser bridge, /agent/act, webchat local-root bypass GHSA-mr34, SecretRef stale auth GHSA-xmxx)
-21. Exec guardrails & approval security (safeBins bypass CVE-2026-28363, shell expansion CVE-2026-28463, approval injection CVE-2026-28466, replay)
+20. Authentication & route security (proxy bypass, CDP auth, browser bridge, /agent/act, webchat local-root bypass GHSA-mr34, SecretRef stale auth GHSA-xmxx, webhook SecretRef replay GHSA-q8ff, gateway config mutation guard GHSA-cwj3)
+21. Exec guardrails & approval security (safeBins bypass CVE-2026-28363, shell expansion CVE-2026-28463, approval injection CVE-2026-28466, heredoc/env-argv/applet/pipeline approval gaps, replay)
 22. Node.js version / CVE-2026-21636 permission model bypass
 23. VS Code extension trojan detection
 24. Internet exposure detection
-25. MCP server security audit
+25. MCP server security audit (tool poisoning, stdio env filtering, loopback owner context, bundled MCP/LSP policy)
 26. PATH hijacking & command resolution (GHSA-jqpq, CVE-2026-29610)
-27. SSRF protection (CVE-2026-26322, CVE-2026-27488)
-28. Path traversal & file handling (deep link CVE-2026-26320, browser control CVE-2026-28462, TAR CVE-2026-28453)
+27. SSRF protection (CVE-2026-26322, CVE-2026-27488, QQBot/Zalo/browser media SSRF hardening)
+28. Path traversal & file handling (deep link CVE-2026-26320, browser control CVE-2026-28462, TAR CVE-2026-28453, OpenShell FS bridge read/write pinning)
 29. DoS protection (webhook CVE-2026-28478, fetchWithGuard CVE-2026-29609)
 30. ACP permission auto-approval (GHSA-7jx5)
-31. Skill env override host injection (GHSA-82g8)
-32. Privilege escalation & scope abuse (pairing creds GHSA-7h7g, operator GHSA-vmhq, shared-auth GHSA-rqpp)
+31. Skill env override host injection (GHSA-82g8, workspace dotenv connector/runtime host overrides)
+32. Privilege escalation & scope abuse (pairing creds GHSA-7h7g, operator GHSA-vmhq, shared-auth GHSA-rqpp, paired-device and ACP child-session scope fixes)
 33. SHA-1 sandbox cache key poisoning (CVE-2026-28479, CVSS 8.7)
 34. Google Chat webhook cross-account bypass (CVE-2026-28469, CVSS 9.8)
 35. SANDWORM_MODE MCP worm detection
@@ -130,6 +130,7 @@ Scan all locally installed ClawHub skills for security issues. Checks each skill
 - Malicious domain references (`ioc/malicious-domains.txt`)
 - SKILL.md integrity (shell injection in Prerequisites)
 - Known malicious file hashes (`ioc/file-hashes.txt`)
+- April 2026 plugin/dotenv/MCP artifacts (`setup-api.js`, OpenClaw runtime env overrides, high-risk startup env)
 
 ```bash
 bash ~/.openclaw/workspace/skills/<skill-dir>/scripts/clawhub-scan.sh
@@ -209,6 +210,10 @@ Based on research from 40+ security sources including:
 - [OWASP MCP Top 10](https://owasp.org/www-project-mcp-top-10/)
 - [CyberArk: MCP Output Poisoning](https://www.cyberark.com/resources/threat-research-blog/poison-everywhere-no-output-from-your-mcp-server-is-safe)
 - [Semgrep: First Malicious MCP Server on npm](https://semgrep.dev/blog/2025/so-the-first-malicious-mcp-server-has-been-found-on-npm-what-does-this-mean-for-mcp-security/)
+- [OpenClaw GitHub Security Advisories](https://github.com/openclaw/openclaw/security/advisories) — current upstream advisory source for patched-version baselines
+- [GHSA-r39h-4c2p-3jxp: setup-api.js cwd execution](https://github.com/openclaw/openclaw/security/advisories/GHSA-r39h-4c2p-3jxp)
+- [GHSA-q8ff-7ffm-m3r9: webhook SecretRef route secret replay](https://github.com/openclaw/openclaw/security/advisories/GHSA-q8ff-7ffm-m3r9)
+- [GHSA-cwj3-vqpp-pmxr: gateway config mutation guard bypass](https://github.com/openclaw/openclaw/security/advisories/GHSA-cwj3-vqpp-pmxr)
 
 ## Security & Transparency
 

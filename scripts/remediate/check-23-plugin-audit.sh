@@ -37,6 +37,31 @@ while IFS= read -r -d '' ext_file; do
     fi
 done < <(find "$EXTENSIONS_DIR" -type f \( -name "*.js" -o -name "*.ts" \) -print0 2>/dev/null)
 
+# Check for setup-api.js cwd/plugin hijack artifacts (GHSA-r39h-4c2p-3jxp)
+while IFS= read -r -d '' setup_file; do
+    ext_name=$(basename "$(dirname "$setup_file")")
+    log "CRITICAL: Extension '$ext_name' contains setup-api.js"
+    log "  File: $setup_file"
+    guidance \
+        "OpenClaw versions before v2026.4.23 could execute attacker-controlled setup-api.js during env-key resolution (GHSA-r39h-4c2p-3jxp)." \
+        "Upgrade OpenClaw to v2026.4.23+." \
+        "Review this file and remove/quarantine the extension if it was not intentionally installed."
+    SUSPICIOUS_FOUND=$((SUSPICIOUS_FOUND + 1))
+done < <(find "$EXTENSIONS_DIR" -type f -name "setup-api.js" -print0 2>/dev/null)
+
+# Check for dotenv/runtime-control override artifacts
+while IFS= read -r -d '' env_file; do
+    if grep -qEi "OPENCLAW_|GATEWAY_URL|API_BASE|CONNECTOR_.*(HOST|URL|ENDPOINT)|MINIMAX_.*(HOST|URL)|RUNTIME_CONTROL|NODE_OPTIONS|BASH_ENV|ZDOTDIR" "$env_file" 2>/dev/null; then
+        ext_name=$(basename "$(dirname "$env_file")")
+        log "WARNING: Extension '$ext_name' dotenv overrides OpenClaw/runtime/connector env keys"
+        log "  File: $env_file"
+        guidance \
+            "OpenClaw versions before v2026.4.23 contain multiple dotenv/env override fixes." \
+            "Review and remove unsafe OPENCLAW_*, connector host, runtime-control, and startup env overrides."
+        SUSPICIOUS_FOUND=$((SUSPICIOUS_FOUND + 1))
+    fi
+done < <(find "$EXTENSIONS_DIR" -type f \( -name ".env" -o -name ".env.*" \) -print0 2>/dev/null)
+
 # Check for extensions with network access patterns
 while IFS= read -r -d '' ext_file; do
     ext_name=$(basename "$(dirname "$ext_file")")

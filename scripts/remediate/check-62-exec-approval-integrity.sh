@@ -15,7 +15,7 @@ SAFE_BINS=$(openclaw config get tools.exec.safeBins 2>/dev/null || echo "")
 
 if version_lt "$OC_VERSION" "2026.3.13" && { [ "$EXEC_SECURITY" = "allowlist" ] || { [ -n "$SAFE_BINS" ] && [ "$SAFE_BINS" != "[]" ] && [ "$SAFE_BINS" != "null" ]; }; }; then
     log "  WARNING: Exec approval integrity can be bypassed by rewritten scripts/wrappers on v$OC_VERSION"
-    guidance "Upgrade OpenClaw to v2026.4.15+ for GHSA-qc36-x95h-7j53, GHSA-xf99-j42q-5w5p, GHSA-rw39-5899-8mxp, GHSA-f8r2-vg7x-gh8m, and the current safe baseline" \
+    guidance "Upgrade OpenClaw to v2026.4.23+ for GHSA-qc36-x95h-7j53, GHSA-xf99-j42q-5w5p, GHSA-rw39-5899-8mxp, GHSA-f8r2-vg7x-gh8m, and the current safe baseline" \
              "Re-review stored approvals for tsx, jiti, node, bun, deno, python, bash, and similar script runners"
     FIXED=1  # signal to orchestrator that guidance was emitted
 else

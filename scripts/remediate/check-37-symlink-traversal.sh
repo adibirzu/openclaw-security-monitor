@@ -17,7 +17,7 @@ if version_lt "$OC_VERSION" "2026.3.21"; then
     log "  CRITICAL: OpenClaw version $OC_VERSION is vulnerable to symlink traversal attacks"
     log "    CVE-2026-32013 — agents.files.get/set symlink escape allows reading/writing outside sandbox"
     log "    CVE-2026-32055 — in-workspace symlinks can traverse to out-of-root paths"
-    guidance "Upgrade OpenClaw to v2026.4.15+ to patch CVE-2026-32013, CVE-2026-32055, and later April 2026 issues" \
+    guidance "Upgrade OpenClaw to v2026.4.23+ to patch CVE-2026-32013, CVE-2026-32055, and later April 2026 issues" \
              "Audit workspace directories for symlinks pointing outside the workspace root:" \
              "  find \$OPENCLAW_HOME/workspace -type l -exec ls -la {} \\;" \
              "Remove or replace any suspicious symlinks that resolve outside the workspace"

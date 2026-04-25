@@ -200,7 +200,7 @@
     <span class="refresh-timer" id="timerDisplay">30s</span>
     <span class="badge badge-unknown" id="statusBadge">LOADING</span>
     <button class="btn" id="btnRefresh" onclick="refreshAll()">Refresh</button>
-    <span class="badge" style="background:#1a1e24;border:1px solid #30363d;font-size:11px;color:#8b949e;">v5.1.0</span>
+    <span class="badge" style="background:#1a1e24;border:1px solid #30363d;font-size:11px;color:#8b949e;">v5.3.0</span>
     <span class="badge" style="background:#1a1e24;border:1px solid #30363d;font-size:11px;color:#8b949e;">READ-ONLY</span>
   </div>
 </div>
@@ -653,11 +653,11 @@ function renderThreatCoverage(statusData) {
   el.innerHTML = `
     <div class="info-row"><span class="info-label">Security Checks</span><span class="info-value" style="font-weight:700">41</span></div>
     <div class="info-row"><span class="info-label">CVEs Tracked</span><span class="info-value">60+</span></div>
-    <div class="info-row"><span class="info-label">GHSAs Tracked</span><span class="info-value">60+</span></div>
+    <div class="info-row"><span class="info-label">GHSAs Tracked</span><span class="info-value">100+</span></div>
     <div class="info-row"><span class="info-label">Malicious Packages</span><span class="info-value">1,200+</span></div>
     <div class="info-row"><span class="info-label">IOC Entries</span><span class="info-value">${total}</span></div>
     <div class="info-row"><span class="info-label">Skills Monitored</span><span class="info-value">${statusData ? statusData.skillCount || 0 : 0}</span></div>
-    <div style="margin-top:10px;font-size:11px;color:#8b949e">Scanner v5.1.0 &mdash; IOC updated: ${esc(ioc.last_update || 'unknown')}</div>
+    <div style="margin-top:10px;font-size:11px;color:#8b949e">Scanner v5.3.0 &mdash; IOC updated: ${esc(ioc.last_update || 'unknown')}</div>
   `;
 }
 

@@ -33,7 +33,7 @@ if version_lt "$OC_VERSION" "2026.3.21"; then
     log "of arbitrary commands via allowlisted tools."
     log ""
     guidance \
-        "Upgrade OpenClaw to v2026.4.15+ to cover CVE-2026-28363 and the April 2026 advisory wave" \
+        "Upgrade OpenClaw to v2026.4.23+ to cover CVE-2026-28363 and the April 2026 advisory wave" \
         "Audit safeBins configuration: openclaw config get tools.exec.safeBins" \
         "Consider removing 'sort' from safeBins until patched"
     FOUND=true
@@ -55,7 +55,7 @@ if version_lt "$OC_VERSION" "2026.3.21"; then
     log "environment variable expansion."
     log ""
     guidance \
-        "Upgrade OpenClaw to v2026.4.15+ to cover CVE-2026-28463 and later auth fixes" \
+        "Upgrade OpenClaw to v2026.4.23+ to cover CVE-2026-28463 and later auth fixes" \
         "Audit safeBins for file-reading commands (head, tail, grep, cat, less, more)"
     FOUND=true
 fi
@@ -76,7 +76,7 @@ if version_lt "$OC_VERSION" "2026.3.21"; then
     log "fields into the request."
     log ""
     guidance \
-        "Upgrade OpenClaw to v2026.4.15+ to cover CVE-2026-28466 and later auth fixes"
+        "Upgrade OpenClaw to v2026.4.23+ to cover CVE-2026-28466 and later auth fixes"
     FOUND=true
 fi
 
@@ -94,14 +94,36 @@ if version_lt "$OC_VERSION" "2026.3.21"; then
         log "Exec approval integrity can be bypassed by rewritten scripts/wrappers."
         log ""
         guidance \
-            "Upgrade OpenClaw to v2026.4.15+ for GHSA-qc36-x95h-7j53, GHSA-xf99-j42q-5w5p, GHSA-rw39-5899-8mxp, GHSA-f8r2-vg7x-gh8m, and the April 2026 rollup" \
+            "Upgrade OpenClaw to v2026.4.23+ for GHSA-qc36-x95h-7j53, GHSA-xf99-j42q-5w5p, GHSA-rw39-5899-8mxp, GHSA-f8r2-vg7x-gh8m, and the April 2026 rollup" \
             "Re-review stored approvals for tsx, jiti, node, bun, deno, python, bash, and similar script runners"
         FOUND=true
     fi
 fi
 
 # ---------------------------------------------------------------------------
-# 5. Exec-approvals.json configuration audit (from old check 26)
+# 5. April exec hardening rollups
+#    GHSA-j6c7, GHSA-49cg, GHSA-2cq5, GHSA-x3h8, GHSA-vfp4
+# ---------------------------------------------------------------------------
+if version_lt "$OC_VERSION" "2026.4.23"; then
+    log ""
+    log "=========================================="
+    log "WARNING: April 2026 exec approval/env hardening rollup"
+    log "=========================================="
+    log ""
+    log "Recent OpenClaw releases fixed additional exec approval gaps:"
+    log "unquoted heredoc shell expansion, shell-wrapper env-argv injection,"
+    log "empty approver-list authorization, busybox/toybox applet binding,"
+    log "complex interpreter pipeline preflight, and high-risk startup env vars."
+    log ""
+    guidance \
+        "Upgrade OpenClaw to v2026.4.23+ for the current safe baseline" \
+        "Re-review approvals for shell wrappers, heredocs, busybox/toybox, env, git, hg, rust, make, and interpreter pipelines" \
+        "Remove broad or wildcard approval rules before re-enabling automation"
+    FOUND=true
+fi
+
+# ---------------------------------------------------------------------------
+# 6. Exec-approvals.json configuration audit (from old check 26)
 # ---------------------------------------------------------------------------
 if [ -f "$EXEC_APPROVALS" ] && [ -r "$EXEC_APPROVALS" ]; then
     UNSAFE_PATTERNS=0
@@ -139,8 +161,8 @@ fi
 if [ "$FOUND" = true ]; then
     log ""
     log "  CVEs covered: CVE-2026-28363, CVE-2026-28463, CVE-2026-28466"
-    log "  GHSAs covered: GHSA-qc36, GHSA-xf99, GHSA-rw39, GHSA-f8r2"
-    log "  Minimum safe version: v2026.4.15+"
+    log "  GHSAs covered: GHSA-qc36, GHSA-xf99, GHSA-rw39, GHSA-f8r2, GHSA-j6c7, GHSA-49cg, GHSA-2cq5, GHSA-x3h8, GHSA-vfp4"
+    log "  Minimum safe version: v2026.4.23+"
     FIXED=1  # signal to orchestrator that guidance was emitted
 else
     log "  Exec guardrails baseline acceptable"

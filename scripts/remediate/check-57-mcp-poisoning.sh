@@ -30,6 +30,12 @@ for MCP_DIR in "${MCP_CONFIG_DIRS[@]}"; do
                 log "  CRITICAL: Prompt injection in $mcpfile"
             fi
 
+            # Check for high-risk startup/runtime env variables
+            if grep -iE 'NODE_OPTIONS|BASH_ENV|ENV=|ZDOTDIR|PYTHONPATH|RUBYOPT|GIT_DIR|GIT_WORK_TREE|HGRCPATH|RUSTC_WRAPPER|CARGO_BUILD_RUSTC_WRAPPER|MAKEFLAGS|OPENCLAW_' "$mcpfile" 2>/dev/null | grep -vq '^#'; then
+                HAS_ISSUE=true
+                log "  WARNING: High-risk startup/runtime env variables in $mcpfile"
+            fi
+
             if [ "$HAS_ISSUE" = true ]; then
                 FOUND_ISSUES=true
                 if confirm "Quarantine suspicious MCP config $mcpfile?"; then
@@ -50,6 +56,17 @@ for MCP_DIR in "${MCP_CONFIG_DIRS[@]}"; do
         done < <(find "$MCP_DIR" -type f \( -name "*.json" -o -name "*.yaml" -o -name "*.yml" -o -name "*.toml" \) 2>/dev/null)
     fi
 done
+
+if command -v openclaw &>/dev/null; then
+    OC_VERSION=$(openclaw --version 2>/dev/null || echo "unknown")
+    if version_lt "$OC_VERSION" "2026.4.23"; then
+        FOUND_ISSUES=true
+        guidance \
+            "Upgrade OpenClaw to v2026.4.23+ for MCP stdio env filtering, loopback owner-context bearer derivation, bundled MCP/LSP tool-policy enforcement, and ACP child-session envelope fixes." \
+            "Review all MCP server configs for workspace-provided env values and unexpected tool schemas."
+        FIXED=$((FIXED + 1))
+    fi
+fi
 
 if [ "$FOUND_ISSUES" = false ]; then
     log "  No MCP tool poisoning detected"
