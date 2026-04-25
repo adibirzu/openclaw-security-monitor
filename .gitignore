@@ -27,3 +27,6 @@ Thumbs.db
 # Temp
 *.tmp
 *.temp
+
+# Local-only Codex helper skills
+.agents/skills/lume-openclaw-vm/
