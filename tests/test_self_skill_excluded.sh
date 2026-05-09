@@ -16,8 +16,18 @@ trap 'rm -rf "$home"' EXIT
 cp -R "$REPO_ROOT" "$home/workspace/skills/openclaw-security-monitor"
 
 out="$(run_scan "$home")"; _SCAN_EXIT=$?
-# Exit 0 (SECURE) or 1 (warnings about self files unrelated to detection)
-# but never 2 (COMPROMISED) — that would mean self-detection regressed.
-assert_neq "2" "$_SCAN_EXIT" "self-skill must not trigger COMPROMISED"
-assert_not_contains "$out" "openclaw-security-monitor: AMOS" "self-skill flagged for AMOS"
+
+# Contract: no path under workspace/skills/openclaw-security-monitor must
+# appear in any "found in" line. Host-environment findings on the runner
+# (PATH hijack, etc.) are out of scope — the test isolates the self-exclusion
+# behaviour of the SELF_DIR_NAME --exclude-dir guards in scan.sh.
+self_path="$home/workspace/skills/openclaw-security-monitor"
+if grep -qF -- "$self_path" <<<"$out"; then
+  fail "self-skill cited in scan output (regex literals were detected as if malicious)"
+  echo "    --- offending lines ---"
+  grep -F -- "$self_path" <<<"$out" | head -10 | sed 's/^/    /'
+else
+  pass "self-skill correctly excluded from detection walks"
+fi
+
 finish_test
