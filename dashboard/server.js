@@ -16,9 +16,10 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const { URL } = require('url');
 
-const PORT = 18800;
+const PORT = parseInt(process.env.DASHBOARD_PORT, 10) || 18800;
 const HOST = process.env.DASHBOARD_HOST || '127.0.0.1';
 const HOME = process.env.HOME;
 const OPENCLAW = path.join(HOME, '.openclaw');
@@ -28,17 +29,60 @@ const DASHBOARD_DIR = __dirname;
 const startTime = Date.now();
 const MAX_TEXT_READ_BYTES = 512 * 1024;
 
-// Security headers
-const SEC_HEADERS = {
+// Defense-in-depth: optional bearer token (off by default to preserve UX).
+const DASHBOARD_TOKEN = process.env.DASHBOARD_TOKEN || '';
+
+// DNS-rebinding defense: only accept these Host header values.
+// Browsers send Host: <hostname>:<port>; rebind attacks send the attacker domain.
+const ALLOWED_HOSTS = new Set([
+  `127.0.0.1:${PORT}`,
+  `localhost:${PORT}`,
+  `[::1]:${PORT}`,
+]);
+
+// Common security headers. Per-response CSP is built with a nonce — see secHeaders().
+const BASE_HEADERS = {
   'X-Content-Type-Options': 'nosniff',
   'X-Frame-Options': 'DENY',
-  'X-XSS-Protection': '1; mode=block',
-  'Content-Security-Policy': "default-src 'self' 'unsafe-inline'",
+  'Referrer-Policy': 'no-referrer',
+  'Permissions-Policy': 'accelerometer=(), camera=(), geolocation=(), microphone=(), payment=()',
+  'Cache-Control': 'no-store',
 };
 
-function json(res, data, status = 200) {
-  res.writeHead(status, { ...SEC_HEADERS, 'Content-Type': 'application/json' });
+function secHeaders(nonce) {
+  // 'self' for everything; nonce gates inline <script>/<style>; no remote origins.
+  const csp = [
+    "default-src 'self'",
+    `script-src 'self' 'nonce-${nonce}'`,
+    `style-src 'self' 'nonce-${nonce}'`,
+    "img-src 'self' data:",
+    "connect-src 'self'",
+    "object-src 'none'",
+    "base-uri 'self'",
+    "frame-ancestors 'none'",
+  ].join('; ');
+  return { ...BASE_HEADERS, 'Content-Security-Policy': csp };
+}
+
+function newNonce() {
+  return crypto.randomBytes(16).toString('base64');
+}
+
+function json(res, data, status = 200, nonce = newNonce()) {
+  res.writeHead(status, { ...secHeaders(nonce), 'Content-Type': 'application/json' });
   res.end(JSON.stringify(data));
+}
+
+function authorized(req) {
+  if (!DASHBOARD_TOKEN) return true;
+  const auth = req.headers['authorization'];
+  if (auth && auth.startsWith('Bearer ') && auth.slice(7) === DASHBOARD_TOKEN) return true;
+  // Allow ?token= for browser convenience when the user pastes the token in the URL once.
+  try {
+    const u = new URL(req.url || '/', 'http://127.0.0.1');
+    if (u.searchParams.get('token') === DASHBOARD_TOKEN) return true;
+  } catch { /* ignore */ }
+  return false;
 }
 
 function readFileSafe(filePath, maxBytes = MAX_TEXT_READ_BYTES) {
@@ -188,15 +232,34 @@ async function handleRequest(req, res) {
   const parsedUrl = new URL(req.url || '/', 'http://127.0.0.1');
   const route = parsedUrl.pathname;
   const method = req.method;
+  const nonce = newNonce();
 
-  // Serve index.html
+  // DNS-rebinding defense: reject any request whose Host header is not localhost.
+  const hostHeader = (req.headers['host'] || '').toLowerCase();
+  if (!ALLOWED_HOSTS.has(hostHeader)) {
+    res.writeHead(421, { ...secHeaders(nonce), 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: 'Misdirected Request: invalid Host header' }));
+    return;
+  }
+
+  // Optional bearer-token gate (when DASHBOARD_TOKEN env is set).
+  if (!authorized(req)) {
+    res.writeHead(401, { ...secHeaders(nonce), 'Content-Type': 'application/json', 'WWW-Authenticate': 'Bearer realm="dashboard"' });
+    res.end(JSON.stringify({ error: 'Unauthorized' }));
+    return;
+  }
+
+  // Serve index.html with per-response nonce stamped onto inline <script>/<style>.
   if (route === '/' && method === 'GET') {
     try {
-      const html = fs.readFileSync(path.join(DASHBOARD_DIR, 'index.html'), 'utf-8');
-      res.writeHead(200, { ...SEC_HEADERS, 'Content-Type': 'text/html; charset=utf-8' });
+      let html = fs.readFileSync(path.join(DASHBOARD_DIR, 'index.html'), 'utf-8');
+      html = html
+        .replace(/<script(?![^>]*\bnonce=)([^>]*)>/gi, `<script nonce="${nonce}"$1>`)
+        .replace(/<style(?![^>]*\bnonce=)([^>]*)>/gi, `<style nonce="${nonce}"$1>`);
+      res.writeHead(200, { ...secHeaders(nonce), 'Content-Type': 'text/html; charset=utf-8' });
       res.end(html);
     } catch {
-      res.writeHead(500, SEC_HEADERS);
+      res.writeHead(500, secHeaders(nonce));
       res.end('index.html not found');
     }
     return;
@@ -313,20 +376,31 @@ async function handleRequest(req, res) {
   }
 
   // 404
-  res.writeHead(404, { ...SEC_HEADERS, 'Content-Type': 'application/json' });
+  res.writeHead(404, { ...secHeaders(nonce), 'Content-Type': 'application/json' });
   res.end(JSON.stringify({ error: 'Not found' }));
 }
 
 const server = http.createServer((req, res) => {
   handleRequest(req, res).catch(err => {
     console.error('Request error:', err);
-    res.writeHead(500, SEC_HEADERS);
+    const nonce = newNonce();
+    res.writeHead(500, secHeaders(nonce));
     res.end(JSON.stringify({ error: 'Internal server error' }));
   });
 });
 
 server.listen(PORT, HOST, () => {
   console.log(`Security Dashboard (read-only) running at http://${HOST}:${PORT}`);
+  if (DASHBOARD_TOKEN) {
+    console.log('Token auth: ENABLED (set Authorization: Bearer <token> or ?token=<token>)');
+  } else {
+    console.log('Token auth: disabled. Set DASHBOARD_TOKEN env to enable.');
+  }
   console.log('To run a scan: ./scripts/scan.sh');
   console.log('To remediate: ./scripts/remediate.sh');
 });
+
+// Exported for tests.
+if (require.main !== module) {
+  module.exports = { ALLOWED_HOSTS, secHeaders, newNonce };
+}

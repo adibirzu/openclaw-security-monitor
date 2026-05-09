@@ -1,0 +1,64 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: tests + secret-scan + shellcheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install shellcheck
+        run: sudo apt-get update && sudo apt-get install -y shellcheck
+
+      - name: Shellcheck (warnings only, non-blocking)
+        run: |
+          set +e
+          shellcheck -S warning -e SC1090,SC1091 \
+            scripts/scan.sh \
+            scripts/remediate.sh \
+            scripts/clawhub-scan.sh \
+            scripts/update-ioc.sh \
+            scripts/network-check.sh \
+            scripts/dashboard.sh \
+            scripts/telegram-setup.sh \
+            scripts/daily-scan-cron.sh \
+            tests/*.sh
+          true
+
+      - name: Run test harness
+        run: bash tests/run.sh
+
+      - name: Secret scan (heuristic)
+        run: bash .github/workflows/scripts/ci-secret-scan.sh
+
+      - name: Verify no tracked log files
+        run: |
+          if git ls-files | grep -E '\.log$'; then
+            echo "::error::log files committed — should be gitignored"
+            exit 1
+          fi
+
+      - name: Verify version sync
+        run: |
+          tag_in_skill=$(grep -E '^version:' SKILL.md | awk '{print $2}')
+          tag_in_scan=$(grep -E '^SCANNER_VERSION=' scripts/scan.sh | head -1 | cut -d'"' -f2)
+          tag_in_plugin=$(grep -oE '"version"[[:space:]]*:[[:space:]]*"[^"]+"' .codex-plugin/plugin.json | head -1 | cut -d'"' -f4)
+          echo "SKILL.md=$tag_in_skill scan.sh=$tag_in_scan plugin.json=$tag_in_plugin"
+          if [ "$tag_in_skill" != "$tag_in_scan" ] || [ "$tag_in_skill" != "$tag_in_plugin" ]; then
+            echo "::error::version mismatch across SKILL.md / scan.sh / plugin.json"
+            exit 1
+          fi

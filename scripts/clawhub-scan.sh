@@ -1,5 +1,5 @@
 #!/bin/bash
-# OpenClaw Security Monitor - ClawHub Skill Scanner v1.2
+# OpenClaw Security Monitor - ClawHub Skill Scanner v1.3
 # https://github.com/adibirzu/openclaw-security-monitor
 #
 # Scans locally installed ClawHub skills for security issues:

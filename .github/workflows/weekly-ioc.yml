@@ -1,0 +1,31 @@
+name: weekly-ioc-refresh
+
+on:
+  schedule:
+    - cron: '0 4 * * 0'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run update-ioc.sh
+        run: bash scripts/update-ioc.sh || true
+      - name: Validate IOC schema after refresh
+        run: bash tests/test_ioc_schema.sh
+      - name: Open PR if IOC files changed
+        uses: peter-evans/create-pull-request@v6
+        with:
+          commit-message: 'chore(ioc): weekly refresh'
+          title: 'chore(ioc): weekly refresh'
+          body: |
+            Automated weekly IOC refresh from upstream feeds.
+            Review the diff before merging — schema validated by tests/test_ioc_schema.sh.
+          branch: chore/weekly-ioc-refresh
+          delete-branch: true
+          add-paths: ioc/

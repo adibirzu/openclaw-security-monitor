@@ -1,5 +1,5 @@
 #!/bin/bash
-# OpenClaw Security Monitor - Enhanced Threat Scanner v5.3.2
+# OpenClaw Security Monitor - Enhanced Threat Scanner v5.3.3
 # https://github.com/adibirzu/openclaw-security-monitor
 #
 # 41-point security scanner (consolidated from 62). Detects: ClawHavoc AMOS
@@ -51,7 +51,7 @@ WORKSPACE_DIR="$OPENCLAW_DIR/workspace"
 LOG_DIR="$OPENCLAW_DIR/logs"
 LOG_FILE="$LOG_DIR/security-scan.log"
 TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-SCANNER_VERSION="5.3.2"
+SCANNER_VERSION="5.3.3"
 SAFE_BASELINE="2026.4.24"
 export PATH="$HOME/.local/bin:/opt/homebrew/opt/node@22/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
 

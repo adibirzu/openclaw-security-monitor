@@ -31,3 +31,4 @@ Thumbs.db
 # Local-only VM helper skills
 .agents/skills/lume-openclaw-vm/
 .claude/skills/lume-openclaw-vm/
+TODO.weekly.md
