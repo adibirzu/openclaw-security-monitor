@@ -1,8 +1,8 @@
 #!/bin/bash
-# OpenClaw Security Monitor - Enhanced Threat Scanner v5.3.3
+# OpenClaw Security Monitor - Enhanced Threat Scanner v5.4.0
 # https://github.com/adibirzu/openclaw-security-monitor
 #
-# 41-point security scanner (consolidated from 62). Detects: ClawHavoc AMOS
+# 44-point security scanner (consolidated from 62). Detects: ClawHavoc AMOS
 # stealer (824+ skills), C2 infrastructure, reverse shells, credential
 # exfiltration, memory poisoning, SKILL.md injection, WebSocket hijacking
 # (CVE-2026-25253), ClawJacked brute-force (v2026.2.25), CSWSH
@@ -51,8 +51,11 @@ WORKSPACE_DIR="$OPENCLAW_DIR/workspace"
 LOG_DIR="$OPENCLAW_DIR/logs"
 LOG_FILE="$LOG_DIR/security-scan.log"
 TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-SCANNER_VERSION="5.3.3"
+SCANNER_VERSION="5.4.0"
 SAFE_BASELINE="2026.4.24"
+# Note: NVD May 5-11 2026 rollup (CVE-2026-43575/43581/44109/44114/44115 et al.)
+# fixes are all included in 2026.4.24+. Bump only when a higher fix-version
+# patches a CVE not already covered.
 export PATH="$HOME/.local/bin:/opt/homebrew/opt/node@22/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
 
 CRITICAL=0
@@ -2042,6 +2045,116 @@ fi
 
 if [ "$DEVID41_ISSUES" -eq 0 ]; then
     result_clean "Device identity and metadata spoofing checks passed"
+fi
+
+# ============================================================
+# CHECK 42: Browser CDP / noVNC sandbox helper on non-loopback
+# (May 2026 rollup: CVE-2026-43575, CVE-2026-43581)
+#
+# CVE-2026-43581: sandbox browser CDP relay binds on 0.0.0.0, exposing
+#   Chrome DevTools Protocol to the network.
+# CVE-2026-43575: noVNC sandbox helper route exposes interactive browser
+#   session credentials without authentication.
+# ============================================================
+header 42 "Checking browser CDP / noVNC sandbox helper exposure..."
+CDP42_ISSUES=0
+if command -v lsof >/dev/null 2>&1; then
+    CDP_EXPOSED=$(lsof -nP -iTCP -sTCP:LISTEN 2>/dev/null \
+        | grep -iE "chrome|chromium|node.*cdp|novnc|websockify" \
+        | grep -vE "127\.0\.0\.1|\[::1\]" || true)
+    if [ -n "$CDP_EXPOSED" ]; then
+        result_critical "Browser CDP or noVNC bound to non-loopback interface (CVE-2026-43575/43581):"
+        log "$CDP_EXPOSED"
+        CDP42_ISSUES=$((CDP42_ISSUES + 1))
+    fi
+    # Also: explicit CDP default port 9222 on any interface that is not loopback.
+    CDP_9222=$(lsof -nP -iTCP:9222 -sTCP:LISTEN 2>/dev/null | grep -vE "127\.0\.0\.1|\[::1\]" | tail -n +2 || true)
+    if [ -n "$CDP_9222" ]; then
+        result_critical "Port 9222 (Chrome DevTools) listening on non-loopback:"
+        log "$CDP_9222"
+        CDP42_ISSUES=$((CDP42_ISSUES + 1))
+    fi
+fi
+# noVNC helper enablement (file-based) — flagged WARN, requires manual review
+for novnc_path in "$OPENCLAW_DIR/sandbox/novnc" "$OPENCLAW_DIR/sandbox-config.json"; do
+    if [ -e "$novnc_path" ]; then
+        if grep -qE '"noVNCEnabled"[[:space:]]*:[[:space:]]*true|novnc.*enabled' "$novnc_path" 2>/dev/null; then
+            result_warn "noVNC helper enabled at $novnc_path — confirm auth gating (CVE-2026-43575)"
+            CDP42_ISSUES=$((CDP42_ISSUES + 1))
+        fi
+    fi
+done
+if [ "$CDP42_ISSUES" -eq 0 ]; then
+    result_clean "Browser CDP / noVNC exposure checks passed"
+fi
+
+# ============================================================
+# CHECK 43: OPENCLAW_ runtime-control variables in workspace dotenv
+# (May 2026 rollup: CVE-2026-44114, CVE-2026-43531)
+#
+# Workspace .env files MUST NOT override OPENCLAW_ runtime-control variables
+# (OPENCLAW_BUNDLED_PLUGINS_DIR, OPENCLAW_HOME, OPENCLAW_GATEWAY_*, etc.).
+# A malicious skill or workspace can break plugin trust verification
+# this way.
+# ============================================================
+header 43 "Scanning workspace dotenv for reserved OPENCLAW_ overrides..."
+RESERVED_RE='^[[:space:]]*OPENCLAW_(BUNDLED_PLUGINS_DIR|HOME|GATEWAY|RUNTIME|CONFIG|SKILLS_DIR|TRUSTED_PUBLISHERS)='
+DOTENV_ISSUES=0
+DOTENV_HITS=""
+for envroot in "$WORKSPACE_DIR" "$SKILLS_DIR"; do
+    [ -d "$envroot" ] || continue
+    while IFS= read -r f; do
+        case "$f" in
+            *"/$SELF_DIR_NAME/"*) continue ;;
+        esac
+        if grep -qE "$RESERVED_RE" "$f" 2>/dev/null; then
+            DOTENV_HITS="${DOTENV_HITS}\n  $f"
+            DOTENV_ISSUES=$((DOTENV_ISSUES + 1))
+        fi
+    done < <(find "$envroot" -maxdepth 5 -type f \( -name '.env' -o -name '.env.*' \) 2>/dev/null)
+done
+if [ "$DOTENV_ISSUES" -gt 0 ]; then
+    result_critical "Reserved OPENCLAW_ env overrides in workspace dotenv (CVE-2026-44114):"
+    log "$DOTENV_HITS"
+else
+    result_clean "No reserved OPENCLAW_ overrides in workspace dotenv"
+fi
+
+# ============================================================
+# CHECK 44: Heredoc shell-expansion smuggling in exec-approvals
+# (May 2026 rollup: CVE-2026-44115)
+#
+# Unquoted heredoc bodies in skill scripts can hide shell expansion past
+# the exec allowlist analyser. Flag any skill containing an unquoted
+# heredoc whose body uses command substitution or backticks.
+# ============================================================
+header 44 "Scanning skills for heredoc shell-expansion smuggling..."
+HEREDOC_ISSUES=0
+HEREDOC_HITS=""
+if [ -d "$SKILLS_DIR" ]; then
+    while IFS= read -r f; do
+        case "$f" in
+            *"/$SELF_DIR_NAME/"*) continue ;;
+        esac
+        # An unquoted heredoc opens with <<WORD (not <<'WORD' or <<"WORD") and
+        # the body may interpolate. Combined with $(...) or backticks in the
+        # subsequent lines, that smuggles dynamic exec past the allowlist.
+        if awk '
+            /<<[[:space:]]*[A-Za-z_][A-Za-z0-9_]*[[:space:]]*$/ { in_h=1; tag=$0; sub(/.*<<[[:space:]]*/, "", tag); sub(/[[:space:]]+.*/, "", tag); next }
+            in_h && $0 ~ ("^"tag"$") { in_h=0; next }
+            in_h && /\$\(|`/ { found=1 }
+            END { exit found ? 0 : 1 }
+        ' "$f" 2>/dev/null; then
+            HEREDOC_HITS="${HEREDOC_HITS}\n  $f"
+            HEREDOC_ISSUES=$((HEREDOC_ISSUES + 1))
+        fi
+    done < <(find "$SKILLS_DIR" -maxdepth 5 -type f \( -name '*.sh' -o -name '*.bash' \) 2>/dev/null)
+fi
+if [ "$HEREDOC_ISSUES" -gt 0 ]; then
+    result_warn "Unquoted heredoc with command substitution in skills (CVE-2026-44115):"
+    log "$HEREDOC_HITS"
+else
+    result_clean "No unquoted-heredoc shell-expansion smuggling detected"
 fi
 
 # ============================================================

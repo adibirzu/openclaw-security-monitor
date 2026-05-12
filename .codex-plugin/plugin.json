@@ -1,6 +1,6 @@
 {
   "name": "openclaw-security-monitor-bundle",
-  "version": "5.3.3",
+  "version": "5.4.0",
   "description": "Security monitoring, threat scanning, and remediation guidance for OpenClaw deployments through the April 2026 OpenClaw advisory rollups.",
   "author": {
     "name": "Adrian Birzu",
