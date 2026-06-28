@@ -1,11 +1,12 @@
 # OpenClaw Known Malicious Domains
 # Source: Koi Security, VirusTotal, Snyk research, Endor Labs, Oasis Security, Huntress, Socket, Lazarus, Semgrep
 # Format: domain|type|campaign|notes
-# Last updated: 2026-03-15
+# Last updated: 2026-06-28
 
 # Payload hosting
 install.app-distribution.net|payload|clawhavoc|AMOS installer distribution
 glot.io|payload-host|clawhavoc|Base64-obfuscated shell scripts (legitimate service abused)
+rentry.co|paste-lure|unit42-tradingview|Paste-site redirect lure; rentry.co/openclaw-code served Base64 prerequisite block
 
 # Exfiltration
 webhook.site|exfil|generic|Data exfiltration webhook service
@@ -44,6 +45,10 @@ github.com/install-openclaw|fake-installer|ghostsocks|Fake OpenClaw installer or
 github.com/simple-claw|fake-installer|ghostsocks|Fake OpenClaw installer org/repo cluster (Huntress)
 github.com/comfyui-auto-installer|fake-installer|ghostsocks|Cross-project installer lure tied to same actor cluster
 github.com/openclaw-trading-assistant|payload|ghostsocks|Self-promotion lure repository linked to installer campaign
+
+# Unit 42 June 2026 ClawHub supply-chain report
+laosji.net|affiliate-injection|unit42-money-radar|Runtime affiliate injection domain used by money-radar referrals.json
+letssendit.fun|agentic-front-running|unit42-letssendit|Agentic front-running infrastructure for coordinated SENDIT token scheme
 
 # Stealth Packer C2 infrastructure (Huntress, Feb 2026)
 # Rust-based malware loaders that inject infostealers in memory

@@ -1,8 +1,8 @@
 #!/bin/bash
-# OpenClaw Security Monitor - Enhanced Threat Scanner v5.4.0
+# OpenClaw Security Monitor - Enhanced Threat Scanner v5.5.0
 # https://github.com/adibirzu/openclaw-security-monitor
 #
-# 44-point security scanner (consolidated from 62). Detects: ClawHavoc AMOS
+# 41-point security scanner (consolidated from 62). Detects: ClawHavoc AMOS
 # stealer (824+ skills), C2 infrastructure, reverse shells, credential
 # exfiltration, memory poisoning, SKILL.md injection, WebSocket hijacking
 # (CVE-2026-25253), ClawJacked brute-force (v2026.2.25), CSWSH
@@ -32,10 +32,11 @@
 # (GHSA-q8ff-7ffm-m3r9), unsafe model-driven gateway config writes
 # (GHSA-cwj3-vqpp-pmxr), dotenv connector/runtime env overrides,
 # MCP owner-context and tool-policy bypasses, OpenShell FS bridge escapes,
+# June 2026 allowlist/env/PATH/MCP/scope advisories (CVE-2026-53840..53866),
 # persistence mechanisms, plugin threats, and more.
 #
-# IOC database updated: 2026-04-25
-# Threat coverage: 60+ CVEs, 100+ GHSAs, 1,200+ malicious packages
+# IOC database updated: 2026-06-28
+# Threat coverage: 170 advisories, 500+ CVEs, 1,200+ malicious packages
 #
 # Exit codes: 0=SECURE, 1=WARNINGS, 2=COMPROMISED
 set -uo pipefail
@@ -51,11 +52,11 @@ WORKSPACE_DIR="$OPENCLAW_DIR/workspace"
 LOG_DIR="$OPENCLAW_DIR/logs"
 LOG_FILE="$LOG_DIR/security-scan.log"
 TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-SCANNER_VERSION="5.4.0"
-SAFE_BASELINE="2026.4.24"
-# Note: NVD May 5-11 2026 rollup (CVE-2026-43575/43581/44109/44114/44115 et al.)
-# fixes are all included in 2026.4.24+. Bump only when a higher fix-version
-# patches a CVE not already covered.
+SCANNER_VERSION="5.5.0"
+SAFE_BASELINE="2026.5.26"
+# Note: the June 2026 GHSA/CVE rollup introduces fixed versions above the
+# previous 2026.4.24 baseline. The highest current stable patched version is
+# 2026.5.26 for CVE-2026-53843/53859/53864-class fixes.
 export PATH="$HOME/.local/bin:/opt/homebrew/opt/node@22/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
 
 CRITICAL=0
@@ -286,6 +287,32 @@ BIN_HITS=$(grep -rlinE --exclude-dir="$SELF_DIR_NAME" "$BIN_PATTERN" "$SKILLS_DI
 if [ -n "$BIN_HITS" ]; then
     result_warn "External binary download references found in:"
     log "$BIN_HITS"
+    MAL2_FOUND=$((MAL2_FOUND + 1))
+fi
+
+# File padding evasion (Unit 42, June 2026: omnicogg padded README.md with 22 MB
+# after an early Base64/curl-pipe payload to exceed scanner thresholds).
+PADDING_HITS=""
+while IFS= read -r candidate; do
+    [ -z "$candidate" ] && continue
+    FILE_SIZE=$(stat -f "%z" "$candidate" 2>/dev/null || stat -c "%s" "$candidate" 2>/dev/null || echo 0)
+    case "$FILE_SIZE" in
+        ''|*[!0-9]*) FILE_SIZE=0 ;;
+    esac
+    if [ "$FILE_SIZE" -lt 5242880 ]; then
+        continue
+    fi
+
+    EARLY_SAMPLE=$(head -c 65536 "$candidate" 2>/dev/null || true)
+    if echo "$EARLY_SAMPLE" | grep -qiE "base64|curl|wget|91\.92\.242|2\.26\.75\.16|rentry\.co|glot\.io|openclaw-code|/Xuvewuyur"; then
+        PADDING_HITS="${PADDING_HITS}\n  $candidate (${FILE_SIZE} bytes)"
+    elif [ "$FILE_SIZE" -gt 20971520 ]; then
+        PADDING_HITS="${PADDING_HITS}\n  $candidate (${FILE_SIZE} bytes; oversized README/SKILL file)"
+    fi
+done < <(find "$SKILLS_DIR" -type f \( -iname "README.md" -o -iname "README.txt" -o -iname "SKILL.md" \) -not -path "*/$SELF_DIR_NAME/*" 2>/dev/null)
+
+if [ -n "$PADDING_HITS" ]; then
+    result_critical "Potential file-padding evasion with early malicious payload:$PADDING_HITS"
     MAL2_FOUND=$((MAL2_FOUND + 1))
 fi
 
@@ -580,7 +607,7 @@ if command -v openclaw &>/dev/null; then
     OC_VERSION=$(run_with_timeout 5 openclaw --version 2>/dev/null || echo "unknown")
     log "  OpenClaw version: $OC_VERSION"
     if version_lt "$OC_VERSION" "$SAFE_BASELINE"; then
-        result_critical "OpenClaw version $OC_VERSION is below the current safe baseline (v$SAFE_BASELINE+) and misses the April 21-25 2026 security rollups"
+        result_critical "OpenClaw version $OC_VERSION is below the current safe baseline (v$SAFE_BASELINE+) and misses the June 2026 security rollups"
         GW_ISSUES=$((GW_ISSUES + 1))
     fi
 fi
@@ -685,6 +712,33 @@ fi
 # ============================================================
 header 12 "Checking installed skills against known malicious publishers..."
 
+PATTERN_ISSUES=0
+if [ -f "$IOC_DIR/malicious-skill-patterns.txt" ] && [ -d "$SKILLS_DIR" ]; then
+    SKILL_NAME_HITS=""
+    while IFS= read -r skilldir; do
+        [ -z "$skilldir" ] && continue
+        SKILL_NAME=$(basename "$skilldir")
+        if [ "$SKILL_NAME" = "$SELF_DIR_NAME" ]; then
+            continue
+        fi
+        while IFS='|' read -r pattern category notes; do
+            [ -z "$pattern" ] && continue
+            case "$pattern" in
+                \#*) continue ;;
+            esac
+            if echo "$SKILL_NAME" | grep -Eiq -- "$pattern"; then
+                SKILL_NAME_HITS="${SKILL_NAME_HITS}\n  $SKILL_NAME ($category): $notes"
+                PATTERN_ISSUES=$((PATTERN_ISSUES + 1))
+                break
+            fi
+        done < <(grep -v '^#' "$IOC_DIR/malicious-skill-patterns.txt" | grep -v '^$')
+    done < <(find "$SKILLS_DIR" -mindepth 1 -maxdepth 1 -type d 2>/dev/null)
+
+    if [ -n "$SKILL_NAME_HITS" ]; then
+        result_critical "Installed skill names match known malicious patterns:$SKILL_NAME_HITS"
+    fi
+fi
+
 if [ -f "$IOC_DIR/malicious-publishers.txt" ]; then
     PUBLISHERS=$(grep -v '^#' "$IOC_DIR/malicious-publishers.txt" | grep -v '^$' | cut -d'|' -f1)
     PUB_HITS=""
@@ -697,10 +751,14 @@ if [ -f "$IOC_DIR/malicious-publishers.txt" ]; then
     if [ -n "$PUB_HITS" ]; then
         result_critical "Known malicious publisher references found:$PUB_HITS"
     else
-        result_clean "No known malicious publishers"
+        if [ "$PATTERN_ISSUES" -eq 0 ]; then
+            result_clean "No known malicious publishers or skill-name patterns"
+        fi
     fi
 else
-    result_clean "Publisher database not available (skipped)"
+    if [ "$PATTERN_ISSUES" -eq 0 ]; then
+        result_clean "Publisher database not available (skipped)"
+    fi
 fi
 
 # ============================================================
@@ -750,6 +808,10 @@ fi
 if command -v openclaw &>/dev/null && [ -n "${OC_VERSION:-}" ] && [ "${OC_VERSION:-}" != "unknown" ]; then
     if version_lt "$OC_VERSION" "2026.4.14"; then
         result_critical "OpenClaw v$OC_VERSION may return unredacted sourceConfig/runtimeConfig values through config.get aliases (GHSA-8372-7vhw-cm6q). Update to v2026.4.14+"
+        CRED13_ISSUES=$((CRED13_ISSUES + 1))
+    fi
+    if version_lt "$OC_VERSION" "2026.4.24"; then
+        result_warn "OpenClaw v$OC_VERSION may restore openclaw.json with broad file permissions during config recovery (CVE-2026-53856 / GHSA-rwp6-7w3q-75fq). Update to v$SAFE_BASELINE+"
         CRED13_ISSUES=$((CRED13_ISSUES + 1))
     fi
 fi
@@ -824,6 +886,14 @@ if command -v openclaw &>/dev/null; then
         fi
         if version_lt "$OC_VERSION" "2026.4.21"; then
             result_warn "OpenClaw v$OC_VERSION may allow wildcard channel senders to satisfy owner-enforced command checks (GHSA-c28g-vh7m-fm7v). Update to v$SAFE_BASELINE+"
+            POL14_ISSUES=$((POL14_ISSUES + 1))
+        fi
+        if version_lt "$OC_VERSION" "2026.5.7"; then
+            result_warn "OpenClaw v$OC_VERSION predates June sender-policy fixes for mutable Discord/Zalo/BlueBubbles allowFrom identities (CVE-2026-53849, CVE-2026-53857, CVE-2026-53860). Update to v$SAFE_BASELINE+"
+            POL14_ISSUES=$((POL14_ISSUES + 1))
+        fi
+        if version_lt "$OC_VERSION" "2026.5.12"; then
+            result_warn "OpenClaw v$OC_VERSION predates June policy fixes for focus controlScope, Slack reactions, exported-session unsafe links, and bootstrap token replay (CVE-2026-53850, CVE-2026-53851, CVE-2026-53841, CVE-2026-53862). Update to v$SAFE_BASELINE+"
             POL14_ISSUES=$((POL14_ISSUES + 1))
         fi
     fi
@@ -1155,6 +1225,16 @@ if command -v openclaw &>/dev/null; then
             AUTH20_ISSUES=$((AUTH20_ISSUES + 1))
         fi
 
+        if version_lt "$OC_VERSION" "2026.4.25"; then
+            result_warn "OpenClaw v$OC_VERSION predates June auth/control fixes for internal webchat ownerAllowFrom inheritance, focus controlScope enforcement, and tool-group ID validation (CVE-2026-53854, CVE-2026-53850, CVE-2026-53863). Update to v$SAFE_BASELINE+"
+            AUTH20_ISSUES=$((AUTH20_ISSUES + 1))
+        fi
+
+        if version_lt "$OC_VERSION" "2026.5.26"; then
+            result_critical "OpenClaw v$OC_VERSION predates June auth/scope fixes for revoked node-token authority, mutable sender identities, and trailing-dot host checks (CVE-2026-53843, CVE-2026-53849, CVE-2026-53857, CVE-2026-53859). Update to v$SAFE_BASELINE+"
+            AUTH20_ISSUES=$((AUTH20_ISSUES + 1))
+        fi
+
         # Check if browser extension is enabled (required for the endpoints above)
         BROWSER_EXT=$(run_with_timeout 5 openclaw config get "browser.extension.enabled" 2>/dev/null || echo "")
         if [ "$BROWSER_EXT" = "true" ] && [ "$AUTH20_ISSUES" -gt 0 ]; then
@@ -1240,6 +1320,16 @@ if command -v openclaw &>/dev/null && [ -n "${OC_VERSION:-}" ] && [ "${OC_VERSIO
 
     if version_lt "$OC_VERSION" "2026.4.22"; then
         result_warn "OpenClaw v$OC_VERSION predates unquoted heredoc shell-expansion rejection in exec allowlist analysis (GHSA-x3h8-jrgh-p8jx). Update to v$SAFE_BASELINE+"
+        EXEC21_ISSUES=$((EXEC21_ISSUES + 1))
+    fi
+
+    if version_lt "$OC_VERSION" "2026.5.12"; then
+        result_critical "OpenClaw v$OC_VERSION predates June exec allowlist fixes for skipped argument patterns, inline-command parsing, shell positional parameters, and combined macOS POSIX flags (CVE-2026-53853, CVE-2026-53866, CVE-2026-53855, CVE-2026-53861). Update to v$SAFE_BASELINE+"
+        EXEC21_ISSUES=$((EXEC21_ISSUES + 1))
+    fi
+
+    if version_lt "$OC_VERSION" "2026.5.26"; then
+        result_warn "OpenClaw v$OC_VERSION predates transparent wrapper side-effect and host env sanitizer hardening (CVE-2026-53848, CVE-2026-53864). Update to v$SAFE_BASELINE+"
         EXEC21_ISSUES=$((EXEC21_ISSUES + 1))
     fi
 fi
@@ -1367,6 +1457,10 @@ if command -v openclaw &>/dev/null && [ -n "${OC_VERSION:-}" ] && [ "${OC_VERSIO
         result_warn "OpenClaw v$OC_VERSION predates MCP loopback owner-context derivation from server-issued bearer tokens (GHSA-r6xh-pqhr-v4xh). Update to v$SAFE_BASELINE+"
         MCP_ISSUES=$((MCP_ISSUES + 1))
     fi
+    if version_lt "$OC_VERSION" "2026.5.12"; then
+        result_critical "OpenClaw v$OC_VERSION may forward MCP Streamable HTTP custom headers across redirects to another origin (CVE-2026-53840 / GHSA-rjxq-qqhf-8hwh). Update to v$SAFE_BASELINE+"
+        MCP_ISSUES=$((MCP_ISSUES + 1))
+    fi
 fi
 if [ "$MCP_ISSUES" -eq 0 ]; then
     result_clean "MCP server configuration acceptable"
@@ -1428,6 +1522,10 @@ fi
 # CVE-2026-29610 version check (was check 50, fixed v2026.2.14)
 if command -v openclaw &>/dev/null && [ -n "${OC_VERSION:-}" ] && [ "${OC_VERSION:-}" != "unknown" ]; then
     if version_advisory "2026.2.14" "PATH command hijacking via unsafe resolution (CVE-2026-29610)" "warn"; then
+        PATH26_ISSUES=$((PATH26_ISSUES + 1))
+    fi
+    if version_lt "$OC_VERSION" "2026.5.2"; then
+        result_critical "OpenClaw v$OC_VERSION may let workspace-derived service PATH influence trash command selection (CVE-2026-53865 / GHSA-rx78-29qr-5hq8). Update to v$SAFE_BASELINE+"
         PATH26_ISSUES=$((PATH26_ISSUES + 1))
     fi
 fi
@@ -1494,6 +1592,10 @@ if command -v openclaw &>/dev/null && [ -n "${OC_VERSION:-}" ] && [ "${OC_VERSIO
     fi
     if version_lt "$OC_VERSION" "2026.4.22"; then
         result_warn "OpenClaw v$OC_VERSION predates Zalo outbound photo URL SSRF guard enforcement (GHSA-2hh7-c75g-qj2r). Update to v$SAFE_BASELINE+"
+        SSRF_ISSUES=$((SSRF_ISSUES + 1))
+    fi
+    if version_lt "$OC_VERSION" "2026.5.26"; then
+        result_warn "OpenClaw v$OC_VERSION may treat trailing-dot hostnames inconsistently in hostname checks (CVE-2026-53859 / GHSA-gxg4-2rrr-jhc7). Update to v$SAFE_BASELINE+"
         SSRF_ISSUES=$((SSRF_ISSUES + 1))
     fi
 fi
@@ -1634,7 +1736,7 @@ if [ -d "$SKILLS_DIR" ]; then
 fi
 
 if [ -d "$WORKSPACE_DIR" ]; then
-    DOTENV_OVERRIDE_HITS=$(find "$WORKSPACE_DIR" -maxdepth 5 -type f \( -name ".env" -o -name ".env.*" \) -not -path "*/$SELF_DIR_NAME/*" -exec grep -lEi "OPENCLAW_|GATEWAY_URL|API_BASE|CONNECTOR_.*(HOST|URL|ENDPOINT)|MINIMAX_.*(HOST|URL)|RUNTIME_CONTROL|NODE_OPTIONS|BASH_ENV|ZDOTDIR" {} \; 2>/dev/null | head -20 || true)
+    DOTENV_OVERRIDE_HITS=$(find "$WORKSPACE_DIR" -maxdepth 5 -type f \( -name ".env" -o -name ".env.*" \) -not -path "*/$SELF_DIR_NAME/*" -exec grep -lEi "OPENCLAW_|GATEWAY_URL|API_BASE|CONNECTOR_.*(HOST|URL|ENDPOINT)|MINIMAX_.*(HOST|URL)|RUNTIME_CONTROL|NODE_OPTIONS|NODE_PATH|NODE_EXTRA_CA_CERTS|NODE_REDIRECT_WARNINGS|BASH_ENV|ZDOTDIR|STATE_DIRECTORY|npm_execpath|CLOUDSDK_PYTHON" {} \; 2>/dev/null | head -20 || true)
     if [ -n "$DOTENV_OVERRIDE_HITS" ]; then
         result_warn "Workspace dotenv files contain OpenClaw/runtime/connector override keys:"
         log "$DOTENV_OVERRIDE_HITS"
@@ -1649,6 +1751,14 @@ if command -v openclaw &>/dev/null && [ -n "${OC_VERSION:-}" ] && [ "${OC_VERSIO
     fi
     if version_lt "$OC_VERSION" "2026.4.22"; then
         result_warn "OpenClaw v$OC_VERSION predates connector endpoint-host dotenv override blocking (GHSA-55cf-xx38-4p9p). Update to v$SAFE_BASELINE+"
+        ENV_OVERRIDE_ISSUES=$((ENV_OVERRIDE_ISSUES + 1))
+    fi
+    if version_lt "$OC_VERSION" "2026.5.2"; then
+        result_critical "OpenClaw v$OC_VERSION predates June workspace dotenv hardening for npm_execpath, STATE_DIRECTORY, CLOUDSDK_PYTHON, and bundled runtime dependency roots (CVE-2026-53846, CVE-2026-53858, CVE-2026-53842). Update to v$SAFE_BASELINE+"
+        ENV_OVERRIDE_ISSUES=$((ENV_OVERRIDE_ISSUES + 1))
+    fi
+    if version_lt "$OC_VERSION" "2026.5.26"; then
+        result_warn "OpenClaw v$OC_VERSION predates host environment sanitizer fixes for Node.js control variables (CVE-2026-53864 / GHSA-ccwh-wwpp-6wg5). Update to v$SAFE_BASELINE+"
         ENV_OVERRIDE_ISSUES=$((ENV_OVERRIDE_ISSUES + 1))
     fi
 fi
@@ -1701,6 +1811,10 @@ if command -v openclaw &>/dev/null && [ -n "${OC_VERSION:-}" ] && [ "${OC_VERSIO
     fi
     if version_lt "$OC_VERSION" "2026.4.22"; then
         result_warn "OpenClaw v$OC_VERSION predates ACP child-session security envelope inheritance enforcement (GHSA-q3jj-46pq-826r). Update to v$SAFE_BASELINE+"
+        PRIV32_ISSUES=$((PRIV32_ISSUES + 1))
+    fi
+    if version_lt "$OC_VERSION" "2026.5.26"; then
+        result_critical "OpenClaw v$OC_VERSION predates June scope-abuse fixes for revoked node-token authority, active-memory write scope, and empty-scope device re-pairing (CVE-2026-53843, CVE-2026-53847, CVE-2026-53852). Update to v$SAFE_BASELINE+"
         PRIV32_ISSUES=$((PRIV32_ISSUES + 1))
     fi
 fi

@@ -30,7 +30,7 @@ if version_lt "$OC_VERSION" "2026.3.21"; then
     log "short-lived bootstrap tokens. Compromised codes grant persistent access."
     log ""
     guidance \
-        "Upgrade OpenClaw to v2026.4.24+ to fix GHSA-7h7g-x2px-94hj and subsequent auth issues" \
+        "Upgrade OpenClaw to v2026.5.26+ to fix GHSA-7h7g-x2px-94hj and subsequent auth/scope issues" \
         "Rotate device credentials after upgrading: openclaw device rotate-credentials"
     FOUND=true
 fi
@@ -48,7 +48,7 @@ if version_lt "$OC_VERSION" "2026.3.21"; then
     log "endpoints to create/delete browser profiles."
     log ""
     guidance \
-        "Upgrade OpenClaw to v2026.4.24+ to fix GHSA-vmhq-cqm9-6p7q and subsequent auth issues" \
+        "Upgrade OpenClaw to v2026.5.26+ to fix GHSA-vmhq-cqm9-6p7q and subsequent auth/scope issues" \
         "Audit operator accounts for unnecessary write permissions"
     FOUND=true
 fi
@@ -66,7 +66,7 @@ if version_lt "$OC_VERSION" "2026.3.21"; then
         log "Shared gateway credentials allow scope escalation across sessions."
         log ""
         guidance \
-            "Upgrade OpenClaw to v2026.4.24+ to fix GHSA-rqpp-rjj8-7wv8 and subsequent auth issues" \
+            "Upgrade OpenClaw to v2026.5.26+ to fix GHSA-rqpp-rjj8-7wv8 and subsequent auth/scope issues" \
             "Rotate shared gateway tokens/passwords after upgrading"
         FOUND=true
     fi
@@ -85,28 +85,30 @@ if version_lt "$OC_VERSION" "2026.3.21"; then
         log "Pending pairing requests can be exploited to escalate privileges."
         log ""
         guidance \
-            "Upgrade OpenClaw to v2026.4.24+ to fix GHSA-4jpw-hj22-2xmc, GHSA-63f5-hhc7-cx6p, and subsequent auth issues" \
+            "Upgrade OpenClaw to v2026.5.26+ to fix GHSA-4jpw-hj22-2xmc, GHSA-63f5-hhc7-cx6p, and subsequent auth/scope issues" \
             "Re-issue pending pairing requests after upgrading"
         FOUND=true
     fi
 fi
 
 # ---------------------------------------------------------------------------
-# 5. April auth/scope hardening rollup
-#    GHSA-xrq9, GHSA-7jm2, GHSA-q3jj, GHSA-5wj5
+# 5. June auth/scope hardening rollup
+#    GHSA-xrq9, GHSA-7jm2, GHSA-q3jj, GHSA-5wj5,
+#    CVE-2026-53843, CVE-2026-53847, CVE-2026-53852
 # ---------------------------------------------------------------------------
-if version_lt "$OC_VERSION" "2026.4.24"; then
+if version_lt "$OC_VERSION" "2026.5.26"; then
     log ""
     log "=========================================="
-    log "WARNING: April 2026 auth/scope hardening rollup"
+    log "WARNING: June 2026 auth/scope hardening rollup"
     log "=========================================="
     log ""
     log "Recent OpenClaw releases fixed paired-device action scoping,"
     log "protected operator-config mutation, ACP child-session envelope"
-    log "inheritance, and pairing reconnect command escalation issues."
+    log "inheritance, revoked node-token restoration, active-memory write"
+    log "scope, empty-scope re-pairing, and pairing reconnect command issues."
     log ""
     guidance \
-        "Upgrade OpenClaw to v2026.4.24+ for the current safe baseline" \
+        "Upgrade OpenClaw to v2026.5.26+ for the current safe baseline" \
         "Rotate gateway and device credentials after upgrading" \
         "Re-approve paired devices and remove stale pending pairing requests"
     FOUND=true
@@ -117,8 +119,8 @@ fi
 # ---------------------------------------------------------------------------
 if [ "$FOUND" = true ]; then
     log ""
-    log "  Advisories covered: GHSA-7h7g, GHSA-vmhq, GHSA-rqpp, GHSA-4jpw, GHSA-63f5, GHSA-xrq9, GHSA-7jm2, GHSA-q3jj, GHSA-5wj5"
-    log "  Minimum safe version: v2026.4.24+"
+    log "  Advisories covered: GHSA-7h7g, GHSA-vmhq, GHSA-rqpp, GHSA-4jpw, GHSA-63f5, GHSA-xrq9, GHSA-7jm2, GHSA-q3jj, GHSA-5wj5, CVE-2026-53843, CVE-2026-53847, CVE-2026-53852"
+    log "  Minimum safe version: v2026.5.26+"
     FIXED=1  # signal to orchestrator that guidance was emitted
 else
     log "  No privilege-escalation findings for current version"

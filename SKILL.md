@@ -2,7 +2,7 @@
 name: openclaw-security-monitor
 description: Proactive security monitoring, threat scanning, and auto-remediation for OpenClaw deployments
 tags: [security, scan, remediation, monitoring, threat-detection, hardening]
-version: 5.4.0
+version: 5.5.0
 author: Adrian Birzu
 user-invocable: true
 disable-model-invocation: true
@@ -23,7 +23,7 @@ metadata:
 
 # Security Monitor
 
-Real-time security monitoring with threat intelligence from ClawHavoc research, the April 2026 OpenClaw advisory rollups, daily automated scans, web dashboard, and Telegram alerting for OpenClaw.
+Real-time security monitoring with threat intelligence from ClawHavoc research, the June 2026 OpenClaw advisory rollups, daily automated scans, web dashboard, and Telegram alerting for OpenClaw.
 
 ## Commands
 Note: Replace `<skill-dir>` with the actual folder name where this skill is installed (commonly `openclaw-security-monitor` or `security-monitor`).
@@ -31,7 +31,7 @@ Note: Replace `<skill-dir>` with the actual folder name where this skill is inst
 ### /security-scan
 Run a comprehensive 41-point security scan:
 1. Known C2 IPs (ClawHavoc: 91.92.242.x, 95.92.242.x, 54.91.154.110)
-2. Malware signatures & obfuscation (AMOS stealer, base64 payloads, binary downloads)
+2. Malware signatures & obfuscation (AMOS stealer, base64 payloads, binary downloads, file-padding evasion)
 3. Reverse shells & backdoors (bash, python, perl, ruby, php, lua)
 4. Credential exfiltration endpoints (webhook.site, pipedream, ngrok, etc.)
 5. Crypto wallet targeting (seed phrases, private keys, exchange APIs)
@@ -41,7 +41,7 @@ Run a comprehensive 41-point security scan:
 9. AI prompt injection & instruction manipulation (SKILL.md injection, memory poisoning, MCP tool poisoning, rules file backdoor, trusted prompt-channel downgrade fixes)
 10. Gateway security configuration audit
 11. WebSocket security (CVE-2026-25253, ClawJacked, device identity skip, CSWSH)
-12. Known malicious publisher detection
+12. Known malicious publisher and installed skill-name pattern detection
 13. Credential leakage & plaintext secrets (env access, hardcoded API keys, config.get redaction bypass GHSA-8372)
 14. DM, tool & sandbox policies (open DM, elevated tools, disabled sandbox, Matrix room-control bypass GHSA-2gvc, wildcard owner command and bundled MCP/LSP tool-policy bypasses)
 15. mDNS/Bonjour exposure detection
@@ -49,19 +49,19 @@ Run a comprehensive 41-point security scan:
 17. Log security & poisoning (redaction, ANSI injection, header injection)
 18. Plugin/extension security audit (including setup-api.js cwd/plugin hijack GHSA-r39h)
 19. Docker container security (root, socket mount, privileged mode)
-20. Authentication & route security (proxy bypass, CDP auth, browser bridge, /agent/act, webchat local-root bypass GHSA-mr34, SecretRef stale auth GHSA-xmxx, webhook SecretRef replay GHSA-q8ff, gateway config mutation guard GHSA-cwj3)
-21. Exec guardrails & approval security (safeBins bypass CVE-2026-28363, shell expansion CVE-2026-28463, approval injection CVE-2026-28466, heredoc/env-argv/applet/pipeline approval gaps, replay)
+20. Authentication & route security (proxy bypass, CDP auth, browser bridge, /agent/act, webchat local-root bypass GHSA-mr34, SecretRef stale auth GHSA-xmxx, webhook SecretRef replay GHSA-q8ff, gateway config mutation guard GHSA-cwj3, June auth/scope CVEs)
+21. Exec guardrails & approval security (safeBins bypass CVE-2026-28363, shell expansion CVE-2026-28463, approval injection CVE-2026-28466, heredoc/env-argv/applet/pipeline approval gaps, replay, June exec allowlist CVEs)
 22. Node.js version / CVE-2026-21636 permission model bypass
 23. VS Code extension trojan detection
 24. Internet exposure detection
-25. MCP server security audit (tool poisoning, stdio env filtering, loopback owner context, bundled MCP/LSP policy)
-26. PATH hijacking & command resolution (GHSA-jqpq, CVE-2026-29610)
-27. SSRF protection (CVE-2026-26322, CVE-2026-27488, QQBot/Zalo/browser media SSRF hardening)
+25. MCP server security audit (tool poisoning, stdio env filtering, loopback owner context, bundled MCP/LSP policy, Streamable HTTP redirect header leak CVE-2026-53840)
+26. PATH hijacking & command resolution (GHSA-jqpq, CVE-2026-29610, workspace-derived service PATH CVE-2026-53865)
+27. SSRF protection (CVE-2026-26322, CVE-2026-27488, QQBot/Zalo/browser media SSRF hardening, trailing-dot hostname checks CVE-2026-53859)
 28. Path traversal & file handling (deep link CVE-2026-26320, browser control CVE-2026-28462, TAR CVE-2026-28453, OpenShell FS bridge read/write pinning)
 29. DoS protection (webhook CVE-2026-28478, fetchWithGuard CVE-2026-29609)
 30. ACP permission auto-approval (GHSA-7jx5)
-31. Skill env override host injection (GHSA-82g8, workspace dotenv connector/runtime host overrides)
-32. Privilege escalation & scope abuse (pairing creds GHSA-7h7g, operator GHSA-vmhq, shared-auth GHSA-rqpp, paired-device and ACP child-session scope fixes)
+31. Skill env override host injection (GHSA-82g8, workspace dotenv connector/runtime host overrides, June npm_execpath/STATE_DIRECTORY/CLOUDSDK_PYTHON/Node env CVEs)
+32. Privilege escalation & scope abuse (pairing creds GHSA-7h7g, operator GHSA-vmhq, shared-auth GHSA-rqpp, paired-device, node-token, active-memory, and ACP child-session scope fixes)
 33. SHA-1 sandbox cache key poisoning (CVE-2026-28479, CVSS 8.7)
 34. Google Chat webhook cross-account bypass (CVE-2026-28469, CVSS 9.8)
 35. SANDWORM_MODE MCP worm detection

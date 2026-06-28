@@ -1,5 +1,41 @@
 # Changelog
 
+## v5.5.0 — 2026-06-28
+
+### Added — June 2026 advisory rollup coverage
+- Bumped the scanner safe baseline from `2026.4.24` to `2026.5.26`.
+- Added version-gated scanner coverage for the June CVE-2026-53840..53866
+  advisory set across existing consolidated checks:
+  - CHECK 20/32: revoked node-token authority, mutable sender identities,
+    ownerAllowFrom/controlScope gaps, active-memory scope, and empty-scope
+    device re-pairing.
+  - CHECK 21: exec allowlist skipped arguments, inline command parsing,
+    shell positional parameters, macOS POSIX inline flags, transparent
+    wrappers, and host env sanitizer gaps.
+  - CHECK 25/26/27/31: MCP Streamable HTTP redirect header leakage,
+    workspace-derived service PATH selection, trailing-dot hostname checks,
+    and workspace dotenv/env overrides for `npm_execpath`, `STATE_DIRECTORY`,
+    `CLOUDSDK_PYTHON`, and Node control variables.
+- Added regression test `tests/test_june_2026_baseline.sh` using a fake
+  `openclaw --version` to ensure stale `2026.5.12` installs are flagged.
+- Added additional threat-intelligence coverage from Unit 42 and the
+  `philskents/clawhub-blocklist` community feed:
+  - Network/hash indicators for the June TradingView paste-site lure,
+    `cluw` macOS infostealer, `omnicogg`, `money-radar`, and `letssendit`.
+  - Skill and publisher identifiers for `clawhud`, `polymarket-traiding-bot`,
+    `moltbook-lm8`, `moltbookagent`, `publish-dist`, `krajekisbtc`, `clawcode`,
+    and related clusters.
+  - CHECK 2 file-padding evasion detection for oversized README/SKILL files
+    with early Base64/curl/C2 payloads.
+  - CHECK 12 installed-skill slug matching against `malicious-skill-patterns.txt`.
+- Added regression test `tests/test_unit42_padding_evasion.sh`.
+
+### Changed
+- Scanner version bumped to `5.5.0`; plugin metadata, skill metadata,
+  installer banner, and README were synced.
+- Corrected scanner/header documentation to the implemented 41 consolidated
+  checks.
+
 ## v5.4.0 — 2026-05-12
 
 ### Added — May 2026 advisory rollup coverage

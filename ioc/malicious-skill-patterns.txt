@@ -2,7 +2,7 @@
 # These patterns match known malicious skill naming conventions
 # Sources: Koi Security, Bloom Security/JFrog, Snyk, OpenSourceMalware, Antiy CERT, Endor Labs, Huntress, Socket, Lazarus, OWASP MCP
 # Format: pattern|category|notes
-# Last updated: 2026-03-15
+# Last updated: 2026-06-28
 
 # ClawHub typosquats (28 variants found)
 ^clawhub[0-9]*$|typosquat|clawhub misspelling
@@ -48,6 +48,22 @@ gdrive-|gworkspace-lure|drive tool lures
 ^linkedin-job-application$|exfil-skill|Job application lure skill (bloom-campaign)
 ^openclawcli$|malware-installer|Windows infostealer in password-protected ZIP (Ddoy233)
 ^clawdhub1$|typosquat|Active variant of clawhub typosquat (~100 installations)
+^clawhud$|typosquat|ClawHub blocklist variant still live as of Snyk ToxicSkills
+^polymarket-traiding-bot$|crypto-lure|PolymarketAuthTool trojan lure (traiding typo)
+^moltbook-lm8$|agent-lure|ClawHub blocklist malicious skill
+^moltbookagent$|prompt-injection|Unicode contraband / DAN-style jailbreak skill
+^publish-dist$|prompt-injection|Unicode contraband / DAN-style jailbreak skill
+^solana-wallet-tracker$|crypto-lure|ClawHavoc crypto-themed AMOS delivery skill
+^youtube-summarize-pro$|youtube-lure|ClawHavoc YouTube-themed AMOS delivery skill
+
+# Unit 42 June 2026 ClawHub supply-chain report
+^tradingview-ai-indicator-assistant$|paste-lure|TradingView assistant with rentry.co/openclaw-code Base64 prerequisite lure
+^ai-tradingview-assistant-for-macos$|paste-lure|macOS TradingView assistant with paste-site prerequisite lure
+^omnicogg$|padding-evasion|README.md padded with 22 MB filler after malicious Base64 dropper
+^money-radar$|affiliate-injection|Runtime agentic affiliate injection via laosji.net referrals.json
+^letssendit$|agentic-front-running|Agentic front-running scheme using letssendit.fun infrastructure
+^polymarketbtc$|telegram-exfil|Unit 42 early campaign cluster exfiltrating crypto private keys via Telegram Bot API
+^polymarketbtcassistant$|telegram-exfil|Unit 42 early campaign cluster exfiltrating crypto private keys via Telegram Bot API
 
 # Social media / job lures (Bloom Security)
 reddit-|social-lure|Reddit tool lures

@@ -12,6 +12,13 @@
 # Malicious skill archive
 79e8f3f7a6113773cdbced2c7329e6dbb2d0b8b3bf5a18c6c97cb096652bc1f2|skill-archive|any|clawhavoc|Malicious skill package
 
+# Unit 42 June 2026 ClawHub supply-chain report
+b6c7e0bf573b1c7d9d3a05eb08d26579199515b847df984862805f44a7af8007|tradingview-ai-indicator-assistant|any|unit42-tradingview|Malicious TradingView assistant skill package
+818aea6143282b352fdfdc0f3ebf77a36e54eb3befb5cad1a355a99ab97c6aa7|cluw|macos|unit42-tradingview|macOS infostealer fetched from 2.26.75.16/Xuvewuyur
+b30eaed1f7478c28f4ec50d07ed5ef014ffbc4b2bc5a38d689ba9f7abb5e19c2|omnicogg|any|unit42-padding|Padded README.md skill with Base64 curl-pipe-bash dropper
+ebb73dbb5aac1f6fe1a88e8f26126a1e1aa34c9f3345ad4345189b40d9bf1d1d|money-radar|any|unit42-affiliate|Runtime affiliate injection skill
+f4e41aa269c88bf11a2022701a9cf41e9a186aa1b224d837c31bf34e0b875d0e|letssendit|any|unit42-front-running|Agentic front-running skill
+
 # Fake installer campaign (Huntress, Mar 4 2026)
 518ff5f147860edee7f8d5620f59f3f0b0da6f0167683a62df2851815f8f44a0|OpenClaw_x64.exe|windows|ghostsocks-installer|Fake installer delivering multi-stage malware
 f03eb5ee2de5f6f76fd7df9f861247f622755e4f04f8ec8ec03f20a9f2adb5b9|cloudvideo.exe|windows|vidar-stealer|Vidar dropper from fake installer chain

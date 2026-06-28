@@ -1,7 +1,7 @@
 # OpenClaw Known C2 IP Addresses
 # Source: Koi Security ClawHavoc report, VirusTotal, community reports, Hudson Rock, Antiy CERT, Oasis Security, Huntress, Socket, Lazarus
 # Format: IP|campaign|first_seen|notes
-# Last updated: 2026-03-15
+# Last updated: 2026-06-28
 #
 # Usage: grep patterns in this file match network connections and skill content
 
@@ -15,6 +15,7 @@
 
 # Payload distribution
 202.161.50.59|clawhavoc|2026-01-28|Payload staging
+2.26.75.16|unit42-tradingview|2026-06-23|Fresh ClawHavoc-style macOS infostealer backend; payload path /Xuvewuyur, cluw SHA256 818aea6143282b352fdfdc0f3ebf77a36e54eb3befb5cad1a355a99ab97c6aa7
 
 # Vidar infostealer campaign (Hudson Rock, Feb 13 2026)
 # Note: Vidar C2 uses fast-flux DNS; monitor for connections to

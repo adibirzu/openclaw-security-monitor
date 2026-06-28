@@ -1,6 +1,6 @@
 # OpenClaw Security Monitor
 
-Proactive security monitoring, threat scanning, and real-time visibility for [OpenClaw](https://github.com/openclawai/openclaw) deployments. Detects threats from the **ClawHavoc** campaign (824+ malicious skills), **AMOS stealer**, **Vidar infostealer**, **GhostSocks** proxy malware, **ClawJacked** WebSocket brute-force, workspace plugin auto-loading attacks, shared-auth scope escalation, approval replay/integrity bypasses, supply chain attacks, memory poisoning, log poisoning, browser relay hijacking, TAR traversal, SSRF, SHA-1 cache poisoning, MCP tool poisoning, SANDWORM worm propagation, **60+ CVEs**, and **100+ GHSAs**.
+Proactive security monitoring, threat scanning, and real-time visibility for [OpenClaw](https://github.com/openclawai/openclaw) deployments. Detects threats from the **ClawHavoc** campaign (824+ malicious skills), **AMOS stealer**, **Vidar infostealer**, **GhostSocks** proxy malware, **ClawJacked** WebSocket brute-force, workspace plugin auto-loading attacks, shared-auth scope escalation, approval replay/integrity bypasses, supply chain attacks, memory poisoning, log poisoning, browser relay hijacking, TAR traversal, SSRF, SHA-1 cache poisoning, MCP tool poisoning, SANDWORM worm propagation, **170 advisories**, and **500+ CVEs**.
 
 ## Why This Exists
 
@@ -8,15 +8,15 @@ In late January 2026, security researchers found that **12% of all ClawHub skill
 
 The primary campaign, ClawHavoc, delivered the Atomic Stealer (AMOS) macOS infostealer targeting crypto wallets, SSH credentials, and browser passwords. In February, Hudson Rock discovered **Vidar infostealer variants specifically targeting OpenClaw agent identities** — stealing openclaw.json, device.json, soul.md, and memory.md files.
 
-Meanwhile, CVE-2026-25253 demonstrated that a single malicious link could achieve full remote code execution on any OpenClaw instance through WebSocket hijacking — even those bound to localhost. The **ClawJacked** attack (Feb 26, Oasis Security) showed that malicious websites can brute-force localhost WebSocket passwords with no rate limiting. **CVE-2026-28363** (CVSS 9.9) revealed a critical safeBins bypass via GNU long-option abbreviations. In total, **60+ CVEs and 100+ GHSAs** have been disclosed including SSRF, exec bypass, ACP auto-approval bypass, webhook forgery, log poisoning, and more. The March 19-21 batch (CVE-2026-32013, CVE-2026-32014, CVE-2026-32025, CVE-2026-32042, CVE-2026-32048, CVE-2026-32051, CVE-2026-32055, CVE-2026-32056, CVE-2026-32064) added symlink traversal, sandbox escape, shell environment RCE, unauthenticated VNC observer access, and device identity/metadata spoofing. The April 16 wave added **Matrix room-control sender-auth bypass** (GHSA-2gvc-4f3c-2855), **webchat media local-root bypass** (GHSA-mr34-9552-qr95), **gateway SecretRef stale bearer auth** (GHSA-xmxx-7p24-h892), and **config.get redaction bypass** (GHSA-8372-7vhw-cm6q). The April 21-25 rollups added **setup-api.js cwd execution** (GHSA-r39h-4c2p-3jxp), **webhook SecretRef route-secret replay** (GHSA-q8ff-7ffm-m3r9), **gateway config mutation guard bypass** (GHSA-cwj3-vqpp-pmxr), dotenv connector/runtime overrides, MCP owner-context/tool-policy issues, OpenShell FS bridge escapes, and additional SSRF/media hardening.
+Meanwhile, CVE-2026-25253 demonstrated that a single malicious link could achieve full remote code execution on any OpenClaw instance through WebSocket hijacking — even those bound to localhost. The **ClawJacked** attack (Feb 26, Oasis Security) showed that malicious websites can brute-force localhost WebSocket passwords with no rate limiting. **CVE-2026-28363** (CVSS 9.9) revealed a critical safeBins bypass via GNU long-option abbreviations. In total, **170 advisories and 500+ CVEs** have been tracked across project and third-party disclosures including SSRF, exec bypass, ACP auto-approval bypass, webhook forgery, log poisoning, and more. The March 19-21 batch (CVE-2026-32013, CVE-2026-32014, CVE-2026-32025, CVE-2026-32042, CVE-2026-32048, CVE-2026-32051, CVE-2026-32055, CVE-2026-32056, CVE-2026-32064) added symlink traversal, sandbox escape, shell environment RCE, unauthenticated VNC observer access, and device identity/metadata spoofing. The April 16 wave added **Matrix room-control sender-auth bypass** (GHSA-2gvc-4f3c-2855), **webchat media local-root bypass** (GHSA-mr34-9552-qr95), **gateway SecretRef stale bearer auth** (GHSA-xmxx-7p24-h892), and **config.get redaction bypass** (GHSA-8372-7vhw-cm6q). The April 21-25 rollups added **setup-api.js cwd execution** (GHSA-r39h-4c2p-3jxp), **webhook SecretRef route-secret replay** (GHSA-q8ff-7ffm-m3r9), **gateway config mutation guard bypass** (GHSA-cwj3-vqpp-pmxr), dotenv connector/runtime overrides, MCP owner-context/tool-policy issues, OpenShell FS bridge escapes, and additional SSRF/media hardening. The June 2026 rollup added **MCP Streamable HTTP redirect header leakage** (CVE-2026-53840), **workspace dotenv/env command influence** (CVE-2026-53842, CVE-2026-53846, CVE-2026-53858, CVE-2026-53864), **exec allowlist bypasses** (CVE-2026-53853, CVE-2026-53855, CVE-2026-53861, CVE-2026-53866), **service PATH hijacking** (CVE-2026-53865), and **revoked device-token/scope abuse** (CVE-2026-53843, CVE-2026-53847, CVE-2026-53852). Unit 42 also documented five evasive ClawHub skills from February-May 2026, including TradingView paste-site lures, an oversized padded README dropper (`omnicogg`), runtime affiliate injection (`money-radar`), and agentic front-running (`letssendit`).
 
 **135,000+ instances** are exposed across 82 countries, with **12,812 exploitable via RCE**. Major security firms including CrowdStrike, Bitdefender, Palo Alto Networks, Cisco, and Kaspersky have issued advisories. Meta has banned OpenClaw from corporate devices.
 
-This project provides defense-in-depth monitoring for self-hosted OpenClaw installations. **Minimum safe version: v2026.4.24**.
+This project provides defense-in-depth monitoring for self-hosted OpenClaw installations. **Minimum safe version: v2026.5.26**.
 
 ## Features
 
-- **41-point security scan** covering C2 infrastructure, stealers, reverse shells, credential exfiltration, memory poisoning, SKILL.md injection, WebSocket hijacking, ClawJacked brute-force, SSRF, safeBins bypass, ACP auto-approval, PATH hijacking, env override injection, deep link truncation, log poisoning, SHA-1 cache poisoning, Google Chat webhook bypass, CSWSH, MCP tool poisoning, SANDWORM worm detection, rules file backdoor, setup-api.js plugin hijacks, workspace plugin auto-loading, shared-auth scope abuse, exec approval replay, DM/tool/sandbox policies, persistence mechanisms, plugin auditing, Docker security, and more
+- **41-point security scan** covering C2 infrastructure, stealers, reverse shells, credential exfiltration, memory poisoning, SKILL.md injection, WebSocket hijacking, ClawJacked brute-force, SSRF, safeBins bypass, ACP auto-approval, PATH hijacking, env override injection, deep link truncation, log poisoning, SHA-1 cache poisoning, Google Chat webhook bypass, CSWSH, MCP tool poisoning, SANDWORM worm detection, rules file backdoor, setup-api.js plugin hijacks, workspace plugin auto-loading, shared-auth scope abuse, exec approval replay, file-padding evasion, malicious skill-name patterns, DM/tool/sandbox policies, persistence mechanisms, plugin auditing, Docker security, and more
 - **IOC database** with known C2 IPs, malicious domains, file hashes, publisher blacklists, and skill name patterns
 - **Auto-updating IOC feeds** that pull latest threat intelligence from upstream
 - **Bundle-plugin manifest** for `clawhub package publish --family bundle-plugin`
@@ -74,7 +74,7 @@ openclaw-security-monitor/
   .codex-plugin/
     plugin.json          # Bundle-plugin manifest for ClawHub/OpenClaw plugin publishing
   scripts/
-    scan.sh              # 41-point threat scanner (v5.3.2)
+    scan.sh              # 41-point threat scanner (v5.5.0)
     remediate.sh         # Orchestrator: scan + per-check remediation
     remediate/
       _common.sh         # Shared helpers (log, confirm, fix_perms)
@@ -104,7 +104,7 @@ openclaw-security-monitor/
 | # | Check | Severity | Detects |
 |---|-------|----------|---------|
 | 1 | C2 Infrastructure | CRITICAL | Known C2 IPs in skill code |
-| 2 | Malware Signatures & Obfuscation | CRITICAL | AMOS stealer, base64 obfuscation, binary downloads |
+| 2 | Malware Signatures & Obfuscation | CRITICAL | AMOS stealer, base64 obfuscation, binary downloads, file-padding evasion |
 | 3 | Reverse Shells | CRITICAL | bash/python/perl/ruby/php/lua reverse shells |
 | 4 | Credential Exfiltration | CRITICAL | webhook.site, pipedream, ngrok, burpcollaborator |
 | 5 | Crypto Wallet Targeting | WARNING | Seed phrases, private keys, exchange API keys |
@@ -114,7 +114,7 @@ openclaw-security-monitor/
 | 9 | AI Prompt Injection & Instruction Manipulation | CRITICAL | SKILL.md injection, memory poisoning, MCP tool poisoning, rules file backdoor, prompt-channel trust fixes |
 | 10 | Gateway Config | CRITICAL | Auth disabled, LAN exposure, version check |
 | 11 | WebSocket Security | CRITICAL | CVE-2026-25253, ClawJacked, device identity skip, CSWSH |
-| 12 | Malicious Publishers | CRITICAL | Skills from known-bad ClawHub accounts |
+| 12 | Malicious Publishers | CRITICAL | Skills from known-bad ClawHub accounts and installed skill-name patterns |
 | 13 | Credential Leakage & Plaintext Secrets | WARNING | Env leakage, hardcoded API keys, plaintext credentials |
 | 14 | DM, Tool & Sandbox Policies | CRITICAL | Open DM, wildcard tools, disabled sandbox, wildcard owner-command bypasses |
 | 15 | mDNS/Bonjour Exposure | WARNING | mDNS broadcasting in full mode |
@@ -122,19 +122,19 @@ openclaw-security-monitor/
 | 17 | Log Security & Poisoning | WARNING | Redaction disabled, ANSI injection, header injection |
 | 18 | Plugin/Extension Audit | CRITICAL | Extensions with exec patterns, malicious domains, setup-api.js cwd hijacks |
 | 19 | Docker Security | CRITICAL | Root containers, socket mount, privileged mode |
-| 20 | Authentication & Route Security | CRITICAL | Proxy bypass, CDP auth, browser bridge, /agent/act, SecretRef replay, config mutation guard |
-| 21 | Exec Guardrails & Approval Security | CRITICAL | safeBins bypass, shell expansion, field injection, heredoc/env/applet gaps, replay |
+| 20 | Authentication & Route Security | CRITICAL | Proxy bypass, CDP auth, browser bridge, /agent/act, SecretRef replay, config mutation guard, June auth/scope CVEs |
+| 21 | Exec Guardrails & Approval Security | CRITICAL | safeBins bypass, shell expansion, field injection, heredoc/env/applet gaps, replay, June exec allowlist CVEs |
 | 22 | Node.js CVE Check | WARNING | CVE-2026-21636 permission model bypass |
 | 23 | VS Code Trojans | CRITICAL | Fake ClawdBot/OpenClaw VS Code extensions |
 | 24 | Internet Exposure | WARNING | Non-loopback gateway binding |
-| 25 | MCP Server Security | CRITICAL | Unrestricted MCP servers, prompt injection, env poisoning, owner-context/tool-policy bypass |
-| 26 | PATH Hijacking & Command Resolution | CRITICAL | GHSA-jqpq, CVE-2026-29610 command hijacking |
-| 27 | SSRF Protection | WARNING | CVE-2026-26322, CVE-2026-27488, QQBot/Zalo/browser media SSRF |
+| 25 | MCP Server Security | CRITICAL | Unrestricted MCP servers, prompt injection, env poisoning, owner-context/tool-policy bypass, CVE-2026-53840 redirects |
+| 26 | PATH Hijacking & Command Resolution | CRITICAL | GHSA-jqpq, CVE-2026-29610, CVE-2026-53865 command hijacking |
+| 27 | SSRF Protection | WARNING | CVE-2026-26322, CVE-2026-27488, QQBot/Zalo/browser media SSRF, CVE-2026-53859 hostname checks |
 | 28 | Path Traversal & File Handling | CRITICAL | Deep link truncation, browser control, TAR traversal, OpenShell FS bridge escapes |
 | 29 | DoS Protection | WARNING | CVE-2026-28478, CVE-2026-29609 memory exhaustion |
 | 30 | ACP Auto-Approval | WARNING | GHSA-7jx5 untrusted metadata bypass |
-| 31 | Env Override Injection | WARNING | GHSA-82g8 skill env overrides, workspace dotenv connector/runtime overrides |
-| 32 | Privilege Escalation & Scope Abuse | CRITICAL | Pairing creds, operator escalation, shared-auth, paired-device and ACP scope abuse |
+| 31 | Env Override Injection | WARNING | GHSA-82g8 skill env overrides, workspace dotenv connector/runtime overrides, June env CVEs |
+| 32 | Privilege Escalation & Scope Abuse | CRITICAL | Pairing creds, operator escalation, shared-auth, paired-device, node-token, active-memory and ACP scope abuse |
 | 33 | SHA-1 Cache Poisoning | CRITICAL | CVE-2026-28479 SHA-1 collision cache attack |
 | 34 | Google Chat Webhook Bypass | CRITICAL | CVE-2026-28469 cross-account webhook injection |
 | 35 | SANDWORM Worm Detection | CRITICAL | Autonomous MCP worm propagation |
